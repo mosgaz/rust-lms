@@ -1,6 +1,6 @@
 # AGENTS.md — Инструкции для AI-агентов
 
-Этот файл — **первичная точка входа** для любого AI-агента (Claude Code, Cursor, Cline, Codex, Copilot), работающего с репозиторием `lms-core`.
+Этот файл — **первичная точка входа** для любого AI-агента (DeepSeek, Qwen, Claude Code, Cursor, Cline, Codex, Copilot), работающего с репозиторием `rust-lms`.
 
 ## 🚦 Перед выполнением ЛЮБОЙ задачи
 
@@ -32,6 +32,7 @@
 | Документ | Назначение |
 |----------|------------|
 | `CONTRIBUTING.md` | Стандарты коммитов и ветвления. |
+| `specs/SPECIFICATION.md` | Upper-level требования, концепция мультитенантности, иерархия контента и сертификаций. |
 | `specs/SPECIFICATION.md` | Upper-level требования, концепция мультитенантности, иерархия контента и сертификаций. |
 | [`specs/STRUCTURE.md`](STRUCTURE.md) | Физическая карта папок проекта, зоны ответственности микро-крейтов в Cargo workspace и правила изоляции. |
 | [`specs/DB_SCHEMA.md`](DB_SCHEMA.md) | Реляционный слой PostgreSQL, правила Row-Level Security (RLS) и инвариантные схемы хранения xAPI в LRS. |
