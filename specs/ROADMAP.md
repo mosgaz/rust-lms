@@ -60,6 +60,17 @@
 
 Полноценная поддержка правил последовательности SCORM 2004 (sequencing rules, rollup, delivery controls). **Не входит** в базовый скоуп (см. [`STANDARDS.md`](STANDARDS.md) §SCORM «Ограничения»). Реализуется как отдельное расширение для Enterprise-тенантов, чьи курсы строго зависят от сложных правил навигации. Требует ADR: объём поддержки, интеграция с нативным `course_tree`, влияние на Calculations Engine.
 
+### Conformance Testing — расширение для On-Premise
+
+Базовый минимум Conformance Test Suite (CLI `rust-lms-conformance` + опциональный сервис `rust-lms-conformance-tests`) входит в комплект поставки и специфицирован в [`STANDARDS.md`](STANDARDS.md) §«Conformance Testing». В план выносится **расширение для Enterprise / Air-gapped**:
+
+* интеграция с полными ADL SCORM Test Suite (1.2 / 2004), cmi5 Test Suite, xAPI LRS Conformance Test Suite — с автоматическим запуском в CI администратора заказчика;
+* LTI 1.3 Conformance Test Suite (1EdTech) — автоматический прогон для Tool Consumer / Tool Provider;
+* SCIM 2.0 Test Suite (RFC 7643 / 7644) — для проверки интеграции с HRIS/HRM;
+* UI в `cpanel` для запуска проверок и хранения отчётов в `audit_log` / DAM.
+
+Расширение актуально для Air-gapped, где администратор заказчика не может использовать внешние SaaS-валидаторы.
+
 ### Application-Level Encryption (ALE)
 
 Спецификация ALE зафиксирована в [`STANDARDS.md`](STANDARDS.md) §«Application-Level Encryption». Требует отдельного ADR перед реализацией:

@@ -1,4 +1,3 @@
-
 # Стандарты кода для AI-ассистентов
 
 Этот документ — **закон**. При генерации кода следуйте ему буквально.
@@ -151,23 +150,33 @@ create_effect(move |_| {
 
 Оба механизма обеспечивают корректную работу SSR (Server-Side Rendering) и Hydration на клиенте.
 
-### 3.3. Zero-Copy передача данных в WASM-модули плагинов
+### 3.3. Обмен данными с WASM-модулями плагинов (Контур Б)
 
 При взаимодействии Ядра и верифицированных плагинов **только в Контуре Б (динамический WASM)** запрещено использовать тяжелую сериализацию в JSON через текстовые мосты на стороне клиента.
+
+Возможны два режима, выбор зависит от наличия `SharedArrayBuffer`:
+
+* **True zero-copy (при включённом `SharedArrayBuffer` и COOP/COEP-заголовках):**
+  * Обмен данными происходит через прямые указатели на области разделяемой памяти WebAssembly.
+  * Требует `Cross-Origin-Opener-Policy: same-origin` и `Cross-Origin-Embedder-Policy: require-corp` (см. [`DEPLOY.md`](DEPLOY.md) §2).
+* **Copy-minimized (без `SharedArrayBuffer`, режим по умолчанию):**
+  * Передача через прямые указатели на `WebAssembly.Memory` с использованием `wasm-bindgen`.
+  * JSON-сериализация исключена; допускается одно копирование между памятью WASM и JS.
 
 ```rust
 // ❌ ПЛОХО: Накладные расходы на сериализацию 10 МБ состояния ломают плавность интерфейса
 let state_str = serde_json::to_string(&heavy_state)?;
 plugin_iframe.post_message(&state_str);
 
-// ✅ ХОРОШО: Передача данных через биндинги и общую WASM-память
+// ✅ ХОРОШО: Передача данных через биндинги и память WASM
+// (в режиме SharedArrayBuffer — истинный zero-copy; иначе — copy-minimized)
 use crate::plugin_sdk::WasmMemoryBridge;
 let memory_ptr = WasmMemoryBridge::allocate_shared_buffer(heavy_bytes.len());
 WasmMemoryBridge::copy_to_shared_memory(memory_ptr, &heavy_bytes);
 plugin_module.init_with_shared_buffer(memory_ptr, heavy_bytes.len());
 ```
 
-**Примечание.** Для Контура А (`iframe`) shared memory невозможна в принципе — там используется `postMessage`. Zero-copy применима только к Контуру Б и требует явной передачи `WebAssembly.Memory` при инстанцировании модуля.
+**Примечание.** Для Контура А (`iframe`) shared memory невозможна в принципе — там используется `postMessage`. Формулировка «zero-copy» применима **только** к Контуру Б и **только** при включённом `SharedArrayBuffer`; в остальных случаях корректно говорить о «copy-minimized bindings».
 
 ---
 

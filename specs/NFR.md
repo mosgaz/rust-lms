@@ -4,7 +4,7 @@
 
 > **Статус документа.** Значения ниже — **стартовые целевые показатели** для этапа проектирования. Они уточняются по результатам нагрузочного тестирования на Этапе 5 (`SPECIFICATION.md` §10). До этого момента любые отклонения — не нарушение SLA, а материал для калибровки.
 >
-> Источники истины по смежным разделам: архитектура — [`ARCHITECTURE.md`](ARCHITECTURE.md); схема БД — [`DB_SCHEMA.md`](DB_SCHEMA.md); offline-лимиты — [`OFFLINE_SYNC.md`](OFFLINE_SYNC.md); retention — [`STANDARDS.md`](STANDARDS.md) §«Политики удержания данных»; наблюдаемость — [`DIAGNOSTICS.md`](DIAGNOSTICS.md) §1–4; инфраструктура OTel — [`DEPLOY.md`](DEPLOY.md) §3.
+> Источники истины по смежным разделам: архитектура — [`ARCHITECTURE.md`](ARCHITECTURE.md); схема БД — [`DB_SCHEMA.md`](DB_SCHEMA.md); offline-лимиты — [`OFFLINE_SYNC.md`](OFFLINE_SYNC.md); retention — [`STANDARDS.md`](STANDARDS.md) §«Политики удержания данных»; наблюдаемость — [`DIAGNOSTICS.md`](DIAGNOSTICS.md) §1–4; инфраструктура OTel — [`DEPLOY.md`](DEPLOY.md) §3; sizing — §6.1 этого файла.
 
 ## 1. Доступность и восстановление (Availability & DR)
 
@@ -25,6 +25,7 @@
 | LRS — Вариант Б (ClickHouse) | ≤ 60 минут | ≤ 30 минут | Репликация ClickHouse (ReplicatedMergeTree). |
 | DAM (MinIO / S3) | ≤ 60 минут | ≤ 15 минут | Версионирование bucket + репликация. |
 | Redis / River (очередь) | ≤ 15 минут | ≤ 5 минут | Persistence (AOF/RDB) для Redis; River хранится в PostgreSQL (см. RTO Core-БД). |
+| OTel Collector + backend (Tempo) | ≤ 60 минут | ≤ 15 минут | OTel Collector — stateless; Tempo хранит трейсы в S3-совместимом хранилище с репликацией. |
 
 **Пояснение по LRS.** Потеря последних N минут xAPI-логов допустима, потому что PWA-клиент хранит их в `offline_xapi_statements` до получения подтверждения `200 OK` с массивом `accepted` (см. [`OPEN_API.md`](OPEN_API.md) §3.4). При потере серверных данных клиент повторно отправит пакет при следующей синхронизации. Это ключевое свойство: **LRS не является источником истины для офлайн-попыток** — источник истины временно живёт на клиенте.
 
@@ -92,11 +93,74 @@
 3. **Rate limit на offline-sync** — третьим. Пакеты принимаются, но с задержкой; клиент повторяет попытку.
 4. **Отключение WebSocket-чатов** — четвёртым, с переходом на SSE-фолбэк.
 5. **Отключение необязательных фоновых задач** (аналитика, пересчёт прогресса) — пятым. LRS продолжает принимать statements.
-6. **Отключение OTel-экспорта** — шестым. Метрики продолжают собираться локально; трейсы перестают экспортироваться в backend (логгирование сохраняется). Это последний шаг деградации — снижение observability допускается только когда всё остальное уже под давлением.
+6. **Отключение OTel-экспорта** — шестым. В SaaS-поставке: трейсы перестают экспортироваться в backend, метрики продолжают собираться локально (Prometheus scrape), логи сохраняются. В Air-gapped: если локальный backend не развёрнут или отключён тенантом, это штатный режим — observability ограничивается логами и метриками.
 
 Приоритет всегда: **запись xAPI → аутентификация → чтение контента → всё остальное.**
 
 ## 6. Хранение и Retention
+
+### 6.1. Sizing Guide (ресурсы по масштабам)
+
+Стартовые рекомендации по инфраструктуре для трёх типовых масштабов. Значения — **минимальные** (min) и **рекомендуемые** (rec). Уточняются по результатам нагрузочного тестирования на Этапе 5.
+
+#### До 500 одновременных пользователей (Small)
+
+| Компонент | CPU | RAM | Disk | IOPS | Network |
+|:---|:---|:---|:---|:---|:---|
+| `nexus-api-server` | 2 vCPU (min) / 4 vCPU (rec) | 4 GB / 8 GB | 20 GB SSD | 500 | 100 Mbps |
+| `nexus-frontend` | 1 vCPU / 2 vCPU | 2 GB / 4 GB | 20 GB SSD | 500 | 100 Mbps |
+| `nexus-postgres-core` (+ TimescaleDB) | 2 vCPU / 4 vCPU | 8 GB / 16 GB | 200 GB SSD | 3 000 | 1 Gbps |
+| `nexus-dam-storage` (MinIO) | 2 vCPU / 4 vCPU | 4 GB / 8 GB | 1 TB HDD/SSD | 1 000 | 1 Gbps |
+| `nexus-vault` | 1 vCPU / 2 vCPU | 1 GB / 2 GB | 10 GB SSD | 200 | 100 Mbps |
+| `nexus-otel-collector` | 1 vCPU / 2 vCPU | 1 GB / 2 GB | 20 GB SSD (локальный буфер) | 500 | 100 Mbps |
+| OTel backend (Tempo) | 1 vCPU / 2 vCPU | 2 GB / 4 GB | 100 GB S3-совместимое | 500 | 1 Gbps |
+
+#### До 5 000 одновременных пользователей (Medium)
+
+| Компонент | CPU | RAM | Disk | IOPS | Network |
+|:---|:---|:---|:---|:---|:---|
+| `nexus-api-server` (×2 инстанса) | 4 vCPU / 8 vCPU | 8 GB / 16 GB | 50 GB SSD | 3 000 | 1 Gbps |
+| `nexus-frontend` (×2 инстанса) | 2 vCPU / 4 vCPU | 4 GB / 8 GB | 50 GB SSD | 1 000 | 1 Gbps |
+| `nexus-postgres-core` (+ TimescaleDB) | 8 vCPU / 16 vCPU | 32 GB / 64 GB | 2 TB SSD (NVMe) | 10 000 | 10 Gbps |
+| LRS — TimescaleDB (в том же PostgreSQL) | — | — | (учитывается в общем диске) | — | — |
+| LRS — ClickHouse (Вариант Б) | 8 vCPU / 16 vCPU | 32 GB / 64 GB | 4 TB SSD (NVMe) | 15 000 | 10 Gbps |
+| `nexus-dam-storage` (MinIO, ×2 узла) | 4 vCPU / 8 vCPU | 8 GB / 16 GB | 10 TB HDD/SSD | 2 000 | 10 Gbps |
+| `nexus-vault` (HA) | 2 vCPU / 4 vCPU | 2 GB / 4 GB | 20 GB SSD | 500 | 1 Gbps |
+| `nexus-otel-collector` | 2 vCPU / 4 vCPU | 4 GB / 8 GB | 50 GB SSD | 1 000 | 1 Gbps |
+| OTel backend (Tempo) | 4 vCPU / 8 vCPU | 8 GB / 16 GB | 1 TB S3-совместимое | 2 000 | 10 Gbps |
+
+#### До 50 000 одновременных пользователей (Large)
+
+| Компонент | CPU | RAM | Disk | IOPS | Network |
+|:---|:---|:---|:---|:---|:---|
+| `nexus-api-server` (×5–10 инстансов) | 16 vCPU / 32 vCPU каждый | 32 GB / 64 GB | 100 GB SSD | 10 000 | 25 Gbps |
+| `nexus-frontend` (×5–10 инстансов) | 8 vCPU / 16 vCPU | 16 GB / 32 GB | 100 GB SSD | 5 000 | 25 Gbps |
+| `nexus-postgres-core` (репликация + шардирование) | 32 vCPU / 64 vCPU | 128 GB / 256 GB | 10 TB NVMe | 50 000 | 25 Gbps |
+| LRS — ClickHouse (Вариант Б, кластер) | 32 vCPU / 64 vCPU на узел, ×3 узла | 128 GB / 256 GB на узел | 20 TB NVMe на узел | 100 000 | 25 Gbps |
+| `nexus-dam-storage` (MinIO, ×4–6 узлов) | 8 vCPU / 16 vCPU на узел | 16 GB / 32 GB на узел | 50 TB на узел | 5 000 | 25 Gbps |
+| `nexus-vault` (HA) | 4 vCPU / 8 vCPU | 8 GB / 16 GB | 100 GB SSD | 2 000 | 10 Gbps |
+| `nexus-otel-collector` (×3 инстанса) | 8 vCPU / 16 vCPU | 16 GB / 32 GB | 200 GB SSD | 5 000 | 10 Gbps |
+| OTel backend (Tempo, кластер) | 16 vCPU / 32 vCPU на узел, ×3 узла | 32 GB / 64 GB на узел | 10 TB S3-совместимое на узел | 10 000 | 25 Gbps |
+
+#### Минимальный Air-gapped On-Premise (bundled, до 500 пользователей)
+
+Вариант «всё в одной коробке» для малых предприятий: **один физический сервер** (или одна VM), все сервисы локально.
+
+| Параметр | Значение |
+|:---|:---|
+| CPU | 16 vCPU (min) / 32 vCPU (rec) |
+| RAM | 32 GB (min) / 64 GB (rec) |
+| Disk | 1 TB SSD (min) / 2 TB NVMe (rec) |
+| IOPS | 5 000 (min) / 15 000 (rec) |
+| Network | 1 Gbps (внутренний LAN; внешний доступ не требуется) |
+
+Компоненты на одном сервере: `nexus-api-server`, `nexus-frontend`, `nexus-postgres-core` (+ TimescaleDB, Вариант А), `nexus-dam-storage`, `nexus-vault`, `nexus-task-worker`, `nexus-otel-collector`, OTel backend (Tempo, локальный).
+
+**Ограничения bundled-варианта.** Для 5 000+ пользователей bundled-вариант не рекомендуется — требуется разделение на отдельные узлы (см. Medium и Large). Air-gapped поставка для крупных предприятий описывается в [`DEPLOY.md`](DEPLOY.md) §4 и согласуется с заказчиком.
+
+> **Sizing Guide — стартовые значения.** Итоговые ресурсы определяются по результатам нагрузочного тестирования (Этап 5). Для критичных поставок рекомендуется закладывать 30–50% запаса по CPU и RAM относительно rec-значений.
+
+### 6.2. Объёмы хранения по классам данных
 
 Сроки хранения по классам данных и механика применения — в [`STANDARDS.md`](STANDARDS.md) §«Политики удержания данных». Здесь фиксируются только количественные лимиты на объём:
 
@@ -107,10 +171,34 @@
 | `chat_messages` | до 1 ТБ | |
 | `etl_logs` | до 10 ГБ | |
 | `certificates` | до 10 ГБ | |
+| OTel-трейсы (Tempo) | до 500 ГБ | Семплирование 10% + 100% для ошибок; retention 30 дней (см. §6.3). |
+| Prometheus-метрики | до 100 ГБ | Retention 90 дней (см. §6.3). |
+
+### 6.3. Retention для трейсов и метрик (Air-gapped)
+
+В Air-gapped On-Premise observability-стек поставляется **bundled** (OTel Collector + Tempo + Prometheus, локально). Чтобы не «положить» диск сервера, применяются жёсткие политики ротации:
+
+* **OTel-трейсы (Tempo):**
+  * Retention по умолчанию: **30 дней**.
+  * Хранение: S3-совместимое локальное хранилище (MinIO) или локальный SSD.
+  * Сжатие: стандартное сжатие Tempo (snappy + колоночное).
+  * После истечения retention — трейсы удаляются безвозвратно.
+  * Настройка retention — через `config.toml`; изменение требует ADR.
+* **Метрики (Prometheus):**
+  * Retention по умолчанию: **90 дней**.
+  * Хранение: локальный SSD.
+  * Сжатие: стандартное сжатие Prometheus TSDB.
+* **Логи (tracing → Loki или файлы):**
+  * Retention по умолчанию: **30 дней**.
+  * Ротация: ежедневная + по достижении размера (max 10 GB на файл).
+  * Сжатие: gzip.
+* **Контроль размера.** При достижении 80% от выделенного объёма — предупреждение в `audit_log`. При 95% — старые данные удаляются принудительно (в пределах retention). Это защищает от переполнения диска.
+
+> **Отключение observability.** Если тенант не хочет разворачивать локальный OTel backend, `nexus-otel-collector` отключается; observability ограничивается структурированными логами и метриками (Prometheus scrape). Это **штатный режим** Air-gapped, а не деградация (см. §5, шаг 6).
 
 ## 7. Наблюдаемость (Observability)
 
-Стандарт наблюдаемости — **OpenTelemetry (OTel)**. Экспорт — по протоколу **OTLP/gRPC** в OTel Collector (см. [`DEPLOY.md`](DEPLOY.md) §3). Детали инструментирования, обязательных атрибутов span и семплирования — в [`DIAGNOSTICS.md`](DIAGNOSTICS.md) §4.
+Стандарт наблюдаемости — **OpenTelemetry (OTel)**. Экспорт — по протоколу **OTLP/gRPC** в OTel Collector (см. [`DEPLOY.md`](DEPLOY.md) §3). Детали инструментирования, обязательных атрибутов span и семплирования — в [`DIAGNOSTICS.md`](DIAGNOSTICS.md) §4. Sizing OTel Collector и локального backend'а — в §6.1.
 
 Обязательные метрики и трейсы:
 
@@ -137,5 +225,5 @@
 Значения NFR — версионируемый артефакт. Изменение любого значения требует:
 1. ADR в [`decisions/`](decisions/) с обоснованием.
 2. Обновления этого файла.
-3. Прогона нагрузочного теста (для изменений §2–§3).
+3. Прогона нагрузочного теста (для изменений §2–§3 и §6.1).
 4. Записи в [`CHANGELOG.md`](../CHANGELOG.md).
