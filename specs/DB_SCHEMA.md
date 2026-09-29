@@ -109,7 +109,7 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
 * `revoked_at`: TIMESTAMPTZ.
 * `expires_at`: TIMESTAMPTZ (TTL равен максимальному времени жизни JWT; после истечения запись может быть удалена).
 
-> Правила и runbook — в [`DEPLOY.md`](DEPLOY.md) §4.4 (при следующей правке).
+> Правила и runbook — в [`DEPLOY.md`](DEPLOY.md) §4.5 «Инцидент: компрометация ключей подписи JWT».
 
 #### Таблица: retention_policies (Защищена RLS)
 

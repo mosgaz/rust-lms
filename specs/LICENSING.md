@@ -161,7 +161,15 @@ Ed25519-подпись над `base64url(header) + "." + base64url(payload)`. П
 * для тенанта-участника — ВКС работает;
 * для остальных тенантов с той же лицензией — `403 feature_not_enabled`.
 
-**Кэширование.** `license.features` кэшируется в памяти вместе с `feature_flags`. Обновление обоих — через PostgreSQL `LISTEN/NOTIFY` (каналы `license_changed` и `feature_flags_changed`; см. [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md) §8.3).
+**Кэширование.** `license.features` кэшируется в памяти вместе с `feature_flags`. Обновление обоих — через PostgreSQL `LISTEN/NOTIFY` (каналы `license_changed` и `feature_flags_changed`). Детали механизма (выделенное соединение, переподключение, payload NOTIFY, polling) описаны в [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md) §8.3–8.4.
+
+**Триггеры `license_changed`:**
+
+* Установка новой лицензии через `POST /api/v1/internal/license` (см. §7.2).
+* Установка лицензии через CLI `rust-lms-cli license install` (см. §8).
+* Переход в grace period, истечение срока, смена статуса (`active` → `grace` → `expired` → `hard_limited`) — сопровождается записью в `audit_log` и (при наличии подписчиков) вебхуком `license.status_changed`.
+
+**Payload NOTIFY:** для `license_changed` payload пустой (`{}`) — инстансы при получении перечитывают всю лицензию из таблицы `license`. Это отличается от `feature_flags_changed`, где payload точечный (см. [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md) §8.3).
 
 ### 5.4. Что не блокируется никогда
 
@@ -221,7 +229,7 @@ Ed25519-подпись над `base64url(header) + "." + base64url(payload)`. П
 * **Уровень доступа:** Глобальный токен супер-администратора (`infrastructure:provisioning`).
 * **Назначение:** Установка новой лицензии (например, после продления или ротации).
 * **Входящий Payload:** `{ "license_key": "<...>" }`.
-* **Поведение:** Подпись проверяется, ключ записывается в файл и в таблицу `license`, платформа перечитывает статус без перезапуска.
+* **Поведение:** Подпись проверяется, ключ записывается в файл и в таблицу `license`, платформа перечитывает статус без перезапуска. Отправляется `NOTIFY license_changed`.
 * **Ответ:** `200 OK` с обновлённым статусом (формат тот же, что у `GET`).
 
 > В Air-gapped эндпоинт может быть недоступен (внешний API отключён). Установка лицензии выполняется через CLI `rust-lms-cli` (см. §8).
@@ -230,7 +238,7 @@ Ed25519-подпись над `base64url(header) + "." + base64url(payload)`. П
 
 Утилита командной строки для работы с лицензией в Air-gapped.
 
-* `rust-lms-cli license install --file /path/to/license.key` — установка лицензии.
+* `rust-lms-cli license install --file /path/to/license.key` — установка лицензии. Отправляет `NOTIFY license_changed`.
 * `rust-lms-cli license status` — вывод текущего статуса.
 * `rust-lms-cli license hardware-id` — вывод hardware ID текущего сервера (для передачи вендору при выпуске лицензии).
 * `rust-lms-cli license validate --file /path/to/license.key` — проверка ключа без установки.
@@ -252,7 +260,7 @@ CLI входит в дистрибутив (см. [`DEPLOY.md`](DEPLOY.md) §4.1
 
 * **По умолчанию:** 30 дней. Конфигурируется вендором при выпуске ключа (payload `grace_period_days`).
 * **Поведение:** в grace period платформа работает в soft enforcement, но в UI администратора — заметный баннер «Лицензия истекла, N дней до ограничения».
-* **Уведомления:** в `audit_log` — ежедневная запись; в вебхуках — событие `license.grace_started` (см. [`OPEN_API.md`](OPEN_API.md) §4.1, при следующей правке).
+* **Уведомления:** в `audit_log` — ежедневная запись; в вебхуках — событие `license.grace_started` (см. [`OPEN_API.md`](OPEN_API.md) §4.1).
 * **После grace period:** hard enforcement (см. §5.2).
 
 ## 11. Ограничения и что НЕ входит в скоуп

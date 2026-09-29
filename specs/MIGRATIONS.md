@@ -17,7 +17,7 @@
 ```bash
 sea-orm-cli generate entity \
   --database-url "$DATABASE_URL" \
-  --output-dir crates/api/src/db/entities \
+  --output-dir crates/api/src/database/entities \
   --with-serde both
 ```
 
