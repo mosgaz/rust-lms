@@ -26,23 +26,25 @@
 
 ### 1.2. Концептуальная схема Core-базы данных (Entities & Relations)
 
+> Имена полей синхронизированы с [`DB_SCHEMA.md`](DB_SCHEMA.md) §1.2. При расхождении приоритет у `DB_SCHEMA.md`.
+
 #### Сущность 1: tenants (Глобальная таблица)
 
 * `id`: UUID (Primary Key)
-* `domain_name`: VARCHAR (Кастомный домен, уникален, опционально)
+* `custom_domain`: VARCHAR(255) (Уникальный внешний веб-адрес тенанта, NULLable)
 * `sso_config`: JSONB (Настройки интеграции: OIDC Client ID, Secret, SAML Metadata, LDAP endpoints)
 * `branding_config`: JSONB (Логотипы, конфигурация переменных Tailwind CSS)
-* `status`: ENUM ('active', 'suspended', 'archived')
-* `created_at` / `updated_at`: TIMESTAMP
+* `status`: VARCHAR(32) (Ограничение CHECK: `'active'`, `'suspended'`, `'archived'`)
+* `created_at` / `updated_at`: TIMESTAMPTZ
 
 #### Сущность 2: users (Изолированная таблица тенанта)
 
 * `id`: UUID (Primary Key)
 * `tenant_id`: UUID (Foreign Key -> tenants.id)
-* `external_id`: VARCHAR (Уникальный ключ из внешней системы/SSO тенанта)
-* `email`: VARCHAR
-* `first_name` / `last_name`: VARCHAR
-* `system_role`: ENUM ('admin', 'instructor', 'mentor', 'learner', 'observer')
+* `external_id`: VARCHAR(255) (Уникальный ключ из внешней системы/SSO тенанта)
+* `email`: VARCHAR(255)
+* `first_name` / `last_name`: VARCHAR(128)
+* `system_role`: VARCHAR(32) (Ограничение CHECK: `'admin'`, `'instructor'`, `'mentor'`, `'learner'`, `'observer'`)
 * `metadata`: JSONB (Динамические поля, заполненные через Custom ETL Mapper)
 * **Индексы:** Композитный уникальный индекс `(tenant_id, external_id)` и `(tenant_id, email)`.
 
@@ -50,32 +52,32 @@
 
 * `id`: UUID (Primary Key)
 * `tenant_id`: UUID (Foreign Key -> tenants.id)
-* `title`: VARCHAR
+* `title`: VARCHAR(255)
 * `description`: TEXT
-* `settings`: JSONB (Логика выдачи сертификатов, правила прохождения)
+* `certification_rules`: JSONB (Правила автоматического триггера выпуска сертификатов при закрытии всех дочерних элементов программы)
 
 #### Сущность 4: courses (Изолированная таблица тенанта)
 
 * `id`: UUID (Primary Key)
 * `tenant_id`: UUID (Foreign Key -> tenants.id)
 * `program_id`: UUID (Foreign Key -> programs.id, NULLable)
-* `title`: VARCHAR
-* `structure`: JSONB (Блочное дерево юнитов, текстовых блоков и ссылок на плагины)
+* `title`: VARCHAR(255)
+* `course_tree`: JSONB (Блочное дерево юнитов, текстовых блоков и ссылок на плагины)
 
 #### Сущность 5: batches (Группы совместного обучения)
 
 * `id`: UUID (Primary Key)
 * `tenant_id`: UUID (Foreign Key -> tenants.id)
 * `course_id`: UUID (Foreign Key -> courses.id)
-* `title`: VARCHAR (Название потока, например «Когорта 2026-А»)
-* `schedule_config`: JSONB (Календарные дедлайны для юнитов, даты живых сессий)
+* `title`: VARCHAR(128) (Название потока, например «Когорта 2026-А»)
+* `timeline_config`: JSONB (Календарные дедлайны для юнитов, даты живых сессий)
 
 #### Сущность 6: quizzes & assignments (Аттестация)
 
 * `id`: UUID (Primary Key)
 * `tenant_id`: UUID (Foreign Key -> tenants.id)
 * `course_id`: UUID (Foreign Key -> courses.id)
-* `unit_id`: VARCHAR (Идентификатор блока в структуре курса)
+* `unit_id`: VARCHAR(128) (Идентификатор блока в структуре курса)
 * `content_data`: JSONB (Для тестов: пул вопросов, типы ответов. Для заданий: описание практики, файлы, рубрикаторы оценки)
 
 #### Сущность 7: certificates (Выданные достижения)
@@ -83,10 +85,10 @@
 * `id`: UUID (Primary Key)
 * `tenant_id`: UUID (Foreign Key -> tenants.id)
 * `user_id`: UUID (Foreign Key -> users.id)
-* `entity_type`: ENUM ('course', 'program', 'batch')
-* `entity_id`: UUID (Идентификатор сущности, за которую выдан сертификат)
-* `verification_code`: VARCHAR (Уникальный публичный хэш-код для проверки)
-* `issued_at`: TIMESTAMP
+* `target_type`: VARCHAR(32) (Ограничение CHECK: `'course'`, `'program'`, `'batch'`)
+* `target_id`: UUID (Идентификатор сущности, за которую выдан сертификат)
+* `verification_hash`: VARCHAR(64) (Уникальный публичный хэш-код для проверки)
+* `issued_at`: TIMESTAMPTZ
 
 ---
 
@@ -196,7 +198,7 @@ flowchart LR
 #### Алгоритм выполнения синхронизации
 
 1. **Авторизационный контроль:** Пересылка данных блокируется до тех пор, пока клиентский слой SSO не подтвердит валидность текущей сессии пользователя (или не обновит OAuth2 Refresh-токен в фоновом режиме).
-2. **Пакетная отправка (Bulk Upload):** Statements считываются из IndexedDB пачками (по 50–100 штук) и отправляются на бэкенд Axum через специализированный эндпоинт `POST /api/v1/analytics/lrs/sync`. Контракт эндпоинта фиксируется в [`OPEN_API.md`](OPEN_API.md).
+2. **Пакетная отправка (Bulk Upload):** Statements считываются из IndexedDB пачками (по 50–100 штук) и отправляются на бэкенд Axum через специализированный эндпоинт `POST /api/v1/analytics/lrs/sync`. Контракт эндпоинта фиксируется в [`OPEN_API.md`](OPEN_API.md) §3.4.
 3. **Иммутабельное разрешение конфликтов:**
    * Если студент выполнял один и тот же тест (Quiz) на двух разных офлайн-устройствах (например, на планшете и смартфоне), бэкенд полностью отказывается от стратегии перезаписи данных (Last Write Wins).
    * Оба пакета данных принимаются системой как абсолютно валидные исторические факты.
@@ -228,9 +230,9 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A[Клиент: Leptos App] -->|CSP-заголовки Nginx| B[HTML5 iframe Container<br/>sandbox='allow-scripts'<br/>src='https://tenant-id.plugins.domain/run']
+    A[Клиент: Leptos App] -->|CSP-заголовки Nginx| B["HTML5 iframe Container<br/>sandbox='allow-scripts'<br/>src='https://tenant-id.plugins.domain/run'"]
     B --> C[Сторонний JS/HTML код]
-    C -->|postMessage<br/>JSON Payload + Emitter| D[Event Listener Мост<br/>Фронтенд Leptos WASM]
+    C -->|"postMessage<br/>JSON Payload + Emitter"| D[Event Listener Мост<br/>Фронтенд Leptos WASM]
     D --> E[Валидация origin,<br/>структуры JSON и токена сессии]
     E --> F[Отправка в Event Bus Ядра]
 ```
@@ -318,7 +320,7 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-    A[Внешний файл:<br/>CSV / XLSX / JSON] --> B[Загрузка чанками<br/>Stream]
+    A["Внешний файл:<br/>CSV / XLSX / JSON"] --> B[Загрузка чанками<br/>Stream]
     B --> C[Валидация формата файла]
     C --> D[Конвейер Трансформации<br/>Mutation Pipeline]
     D --> E[ACID Транзакция<br/>Bulk Insert]
