@@ -7,7 +7,8 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 description = "Библиотека иконок дизайн-системы"
+readme = "./README.md"
 
 [dependencies]
-leptos = { workspace = true }
-serde = { workspace = true }
+leptos = { version = "0.8.20" }
+icons = { version = "0.18.3", features = ["leptos"] }
