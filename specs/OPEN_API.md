@@ -2,7 +2,7 @@
 
 **Файл спецификации:** `OPEN_API.md`
 
-> Сводная архитектурная картина — в [`ARCHITECTURE.md`](ARCHITECTURE.md) §2 и §3.4. Логика offline-синхронизации — в [`OFFLINE_SYNC.md`](OFFLINE_SYNC.md) §4. Полный перечень ролей и их scopes — в [`RBAC.md`](RBAC.md). Соответствие стандартам — в [`STANDARDS.md`](STANDARDS.md). Политика версионирования — в §5 этого файла.
+> Сводная архитектурная картина — в [`ARCHITECTURE.md`](ARCHITECTURE.md) §2 и §3.4. Логика offline-синхронизации — в [`OFFLINE_SYNC.md`](OFFLINE_SYNC.md) §4. Полный перечень ролей и их scopes — в [`RBAC.md`](RBAC.md). Соответствие стандартам — в [`STANDARDS.md`](STANDARDS.md). Политика версионирования — в §5 этого файла. Управление криптоключами — в [`DEPLOY.md`](DEPLOY.md) §4.4. Лицензирование — в [`LICENSING.md`](LICENSING.md). Feature Flags — в [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md).
 
 ## 1. Архитектурные регламенты и Безопасность API
 
@@ -35,6 +35,7 @@ flowchart TD
 * **Выдача:** Генерируются супер-администратором исключительно в главной системной консоли управления платформы.
 * **Тип:** Асимметрично подписанные токены JWT (алгоритм EdDSA / RS256). Публичный ключ зашит в рантайм шлюза API, приватный ключ хранится в защищенном хранилище секретов. JWT **не хранится** в БД — валидация криптографическая (см. [`ARCHITECTURE.md`](ARCHITECTURE.md) §2.1).
 * **Область видимости (Scopes):** `infrastructure:provisioning` (доступ к созданию тенантов), `infrastructure:monitor` (сбор глобальных технических метрик).
+* **Отзыв ключей:** см. [`DEPLOY.md`](DEPLOY.md) §4.5 (runbook компрометации JWT). Список отозванных `kid` — таблица `revoked_jwt_kids` ([`DB_SCHEMA.md`](DB_SCHEMA.md) §1.2).
 
 ### 2.2. Локальные токены (Уровень Тенанта / Tenant API Key)
 
@@ -47,6 +48,7 @@ flowchart TD
   * **Пользователи и ETL:** `users:sync` (импорт пользователей, §3.2), `scim:sync` (SCIM provisioning, §3.5).
   * **Аттестация:** `assignments:evaluate`.
   * **Сертификаты:** `certificates:read`, `certificates:verify`.
+  * **Внутренние:** `license:read` (просмотр статуса лицензии), `features:write` (управление делегированными feature flags).
 
 > Перечень в этом разделе — примеры групп scopes; при добавлении нового эндпоинта соответствующий scope должен быть зафиксирован в [`RBAC.md`](RBAC.md).
 
@@ -202,7 +204,9 @@ flowchart TD
 
 ### 4.1. Регламент подписки и типы системных событий
 
-Администраторы тенанта регистрируют в панели управления URL-адрес своего принимающего сервера (Webhook Endpoint) и подписывают его на определенные типы событий:
+Администраторы тенанта регистрируют в панели управления URL-адрес своего принимающего сервера (Webhook Endpoint) и подписывают его на определенные типы событий.
+
+#### Бизнес-события
 
 * `user.authenticated` — успешный вход пользователя через SSO (передача метаданных сессии).
 * `user.scim.sync` — изменение пользователя или группы через SCIM (см. §3.5). Полезная нагрузка: `operation` (`create` / `update` / `delete`), `user_id`, `external_id`, `source = 'scim'`.
@@ -212,8 +216,43 @@ flowchart TD
 * `program.completed` — успешное закрытие студентом всех курсов программы обучения.
 * `certificate.issued` — генерация цифрового сертификата (передача проверочного хэша и ссылки на верификацию).
 * `retention.applied` — применение политики retention к классу данных тенанта (см. [`STANDARDS.md`](STANDARDS.md) §«Политики удержания данных»).
-* `plugin.revoked` — отзыв WASM-плагина Контура Б через Revocation List (см. [`PLUGIN.md`](PLUGIN.md) §7.3). Полезная нагрузка: `plugin_id`, `version` (если отзыв версионный), `reason`, `revoked_at`.
-* `api.deprecation.announced` — объявление о deprecation версии API (см. §5). Полезная нагрузка: `api_version`, `sunset_date`, `migration_guide_url`.
+
+#### События безопасности и платформы
+
+* `security.jwt_key_rotated` — ротация или отзыв ключа подписи JWT (см. [`DEPLOY.md`](DEPLOY.md) §4.5). Полезная нагрузка:
+  * `kid`: идентификатор ключа (новый или отозванный);
+  * `reason`: `'compromised'` | `'rotated'` | `'end_of_life'`;
+  * `revoked_at`: TIMESTAMPTZ (если применимо);
+  * `new_kid`: идентификатор нового ключа (если ротация успешна).
+* `plugin.revoked` — отзыв WASM-плагина Контура Б через Revocation List. Полезная нагрузка:
+  * `plugin_id`: строковый идентификатор;
+  * `version`: версия плагина (если отзыв версионный);
+  * `reason`: `'compromised'` | `'admin_action'` | `'cve_<CVE-ID>'`;
+  * `cve_id`: идентификатор CVE (для `reason = 'cve_<CVE-ID>'`);
+  * `severity`: `'low'` | `'medium'` | `'high'` | `'critical'` (для CVE);
+  * `revoked_at`: TIMESTAMPTZ.
+
+  Источники: ADR [`2026.09.29-0003.md`](decisions/2026.09.29-0003.md) (подпись и kill switch), ADR [`2026.09.29-0010.md`](decisions/2026.09.29-0010.md) (Supply Chain Security, отзыв по CVE).
+
+#### События лицензирования
+
+* `license.status_changed` — общее событие о смене статуса лицензии (см. [`LICENSING.md`](LICENSING.md) §6, поле `status`). Полезная нагрузка:
+  * `license_id`: UUID;
+  * `previous_status`: `'active'` | `'grace'` | `'expired'` | `'hard_limited'` | `'invalid'`;
+  * `new_status`: то же;
+  * `changed_at`: TIMESTAMPTZ.
+* `license.grace_started` — переход лицензии в grace period (см. [`LICENSING.md`](LICENSING.md) §10). Полезная нагрузка:
+  * `license_id`: UUID;
+  * `expires_at`: TIMESTAMPTZ (дата истечения лицензии);
+  * `grace_period_days`: INTEGER;
+  * `days_remaining`: INTEGER (сколько дней до завершения grace period).
+
+#### События версионирования API
+
+* `api.deprecation.announced` — объявление о deprecation версии API (см. §5). Полезная нагрузка:
+  * `api_version`: строка (`'v1'`, `'v2'`);
+  * `sunset_date`: HTTP-date;
+  * `migration_guide_url`: строка.
 
 ### 4.2. Безопасность и Верификация сообщений (Signing)
 

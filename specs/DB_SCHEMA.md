@@ -2,7 +2,7 @@
 
 **Файл спецификации:** `DB_SCHEMA.md`
 
-> Сводная картина — в [`ARCHITECTURE.md`](ARCHITECTURE.md) §1 и §3. Регламент миграций — в [`MIGRATIONS.md`](MIGRATIONS.md). Количественные NFR (RTO/RPO, лимиты) — в [`NFR.md`](NFR.md). Правила i18n и локализации — в [`STANDARDS.md`](STANDARDS.md) §«Локализация».
+> Сводная картина — в [`ARCHITECTURE.md`](ARCHITECTURE.md) §1 и §3. Регламент миграций — в [`MIGRATIONS.md`](MIGRATIONS.md). Количественные NFR (RTO/RPO, лимиты) — в [`NFR.md`](NFR.md). Правила i18n и локализации — в [`STANDARDS.md`](STANDARDS.md) §«Локализация». Feature Flags — в [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md) и ADR [`2026.09.29-0009.md`](decisions/2026.09.29-0009.md).
 
 ## 1. Реляционный слой (PostgreSQL Core) и Стратегия Мультитенантности
 
@@ -19,11 +19,11 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
     USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 ```
 
-4. Исключение из правил RLS составляют глобальные инфраструктурные таблицы служебного уровня (`tenants`, `tenant_api_keys`), доступ к которым имеет исключительно супер-администратор системы или специализированный авторизационный слой шлюза безопасности.
+4. Исключение из правил RLS составляют глобальные инфраструктурные таблицы служебного уровня (`tenants`, `tenant_api_keys`, `feature_flags`, `license`, `revoked_jwt_kids`), доступ к которым имеет исключительно супер-администратор системы или специализированный авторизационный слой шлюза безопасности.
 
 > **Установка контекста.** Контекст тенанта устанавливается через `set_config('app.current_tenant_id', $1, true)` внутри ACID-транзакции (см. [`CODING_STANDARDS.md`](CODING_STANDARDS.md) §2.1). Прямое использование `SET LOCAL app.current_tenant_id = $1` не поддерживает параметризацию через `$1` и не применяется.
 
-> **Границы применимости.** Принудительная гарантия RLS действует только для реляционного слоя PostgreSQL (все бизнес-таблицы, `tenant_api_keys`, Вариант А LRS — TimescaleDB). Для Варианта Б LRS (ClickHouse) изоляция обеспечивается архитектурно — см. §2 Вариант Б. Требования к тестам изоляции обязательны для обоих вариантов.
+> **Границы применимости.** Принудительная гарантия RLS действует только для реляционного слоя PostgreSQL (все бизнес-таблицы, `tenant_api_keys`, `tenant_feature_flags`, Вариант А LRS — TimescaleDB). Для Варианта Б LRS (ClickHouse) изоляция обеспечивается архитектурно — см. §2 Вариант Б. Требования к тестам изоляции обязательны для обоих вариантов.
 
 ### 1.2. Реляционные сущности и декларативные связи
 
@@ -50,6 +50,66 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
 * `expires_at`: TIMESTAMPTZ (Срок действия ключа, NULLable для бессрочных токенов).
 * `created_at`: TIMESTAMPTZ.
 * **Ограничения:** Уникальный индекс `UNIQUE (key_hash)`.
+
+#### Глобальная таблица: feature_flags (Изолирована от RLS)
+
+Глобальные функциональные флаги платформы. Определяют значение по умолчанию для всех тенантов и признак делегируемости.
+
+* `id`: UUID (Primary Key).
+* `name`: VARCHAR(64) (UNIQUE. Строковый идентификатор: `'vks'`, `'scim'`, `'ale'`, `'conformance_testing'`, …).
+* `description`: TEXT (Человекочитаемое описание для админ-панели).
+* `enabled`: BOOLEAN (NOT NULL, DEFAULT FALSE). Значение по умолчанию для всех тенантов.
+* `is_delegatable`: BOOLEAN (NOT NULL, DEFAULT FALSE). Может ли тенант-админ переключать флаг для своего тенанта.
+* `created_at` / `updated_at`: TIMESTAMPTZ.
+* **Ограничения:** Уникальный индекс `UNIQUE (name)`.
+
+#### Таблица: tenant_feature_flags (Защищена RLS)
+
+Тенантные переопределения функциональных флагов. Если для пары `(tenant_id, flag_name)` записи нет — применяется значение `enabled` из глобальной таблицы `feature_flags`.
+
+* `id`: UUID (Primary Key).
+* `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
+* `flag_name`: VARCHAR(64) (FK -> feature_flags.name ON DELETE CASCADE).
+* `enabled`: BOOLEAN (NOT NULL). Значение override.
+* `updated_by`: UUID (FK -> users.id ON DELETE SET NULL, NULLable). Кто изменил (через UI/API) или NULL при изменении через CLI супер-админом.
+* `updated_at`: TIMESTAMPTZ.
+* **Ограничения:** Уникальный индекс `UNIQUE (tenant_id, flag_name)`.
+
+> Механизм использования — в [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md) §3. Архитектурное решение — в ADR [`2026.09.29-0009.md`](decisions/2026.09.29-0009.md). Связь с лицензированием — в [`LICENSING.md`](LICENSING.md).
+
+#### Глобальная таблица: license (Изолирована от RLS)
+
+Единственная запись (single-row). Хранит текущую лицензию платформы и результат последней валидации.
+
+* `id`: UUID (Primary Key).
+* `license_id`: VARCHAR(64) (UNIQUE). Идентификатор из payload лицензии.
+* `customer_name`: VARCHAR(255).
+* `issued_at` / `expires_at`: TIMESTAMPTZ.
+* `grace_period_days`: INTEGER.
+* `binding_type`: VARCHAR(32) (CHECK: `'node_locked'`, `'domain_locked'`, `'floating'`).
+* `hardware_id`: VARCHAR(128) (NULLable).
+* `domain_fqdn`: VARCHAR(255) (NULLable).
+* `limits`: JSONB.
+* `features`: JSONB (коммерческие права: `{"ale": true, "scim": true, "drm": false, ...}`).
+* `raw_payload`: JSONB (полный payload для аудита).
+* `signature_verified`: BOOLEAN.
+* `last_validated_at`: TIMESTAMPTZ.
+* `status`: VARCHAR(32) (CHECK: `'active'`, `'grace'`, `'expired'`, `'hard_limited'`, `'invalid'`).
+* `created_at` / `updated_at`: TIMESTAMPTZ.
+
+> Механизм лицензирования — в [`LICENSING.md`](LICENSING.md). Архитектурное решение — в ADR [`2026.09.29-0008.md`](decisions/2026.09.29-0008.md).
+
+#### Глобальная таблица: revoked_jwt_kids (Изолирована от RLS)
+
+Список отозванных идентификаторов ключей подписи JWT. Используется API-шлюзом для немедленного отклонения токенов, подписанных скомпрометированным ключом.
+
+* `kid`: VARCHAR(64) (Primary Key). Идентификатор ключа из header JWT.
+* `reason`: VARCHAR(255) (Причина отзыва: `'compromised'`, `'rotated'`, `'end_of_life'`).
+* `revoked_by`: UUID (FK -> users.id, NULLable).
+* `revoked_at`: TIMESTAMPTZ.
+* `expires_at`: TIMESTAMPTZ (TTL равен максимальному времени жизни JWT; после истечения запись может быть удалена).
+
+> Правила и runbook — в [`DEPLOY.md`](DEPLOY.md) §4.4 (при следующей правке).
 
 #### Таблица: retention_policies (Защищена RLS)
 
@@ -260,3 +320,23 @@ ClickHouse не поддерживает `ON CONFLICT DO NOTHING` как Postgre
 **Границы применимости.** Batch-`SELECT` имеет смысл только в пределах одного тенанта (`tenant_id` жёстко берётся из `app.current_tenant_id`). Гонка двух параллельных вставок одного и того же `statement_id` возможна в пределах миллисекунд — при этом обе вставки пройдут (ClickHouse не атомарен по `statement_id`). Это осознанный трейд-офф: дубли возможны только при одновременной повторной отправке одного и того же пакета с двух разных инстансов API, что на практике исключено, потому что клиент отправляет пакет ровно один раз за цикл синхронизации (см. [`OFFLINE_SYNC.md`](OFFLINE_SYNC.md) §4.1).
 
 **Рекомендация.** Для сценариев, где критична строгая идемпотентность даже при гонках, используется Вариант А (TimescaleDB + `ON CONFLICT DO NOTHING`). Для ClickHouse идемпотентность обеспечивается прикладным batch-`SELECT` — этого достаточно для штатного offline-сценария.
+
+#### Мутации и retention-анонимизация в ClickHouse
+
+Политика retention для `xapi_statements` в Варианте Б (ClickHouse) реализуется через **мутации** (`ALTER TABLE ... UPDATE ... WHERE ...`) — это **тяжёлые асинхронные операции**:
+
+* Мутации выполняются в фоне и могут занимать часы на больших партициях.
+* Во время мутации часть запросов может блокироваться.
+* Прогресс виден в `system.mutations`.
+* Отмена мутации ограничена.
+
+**Рекомендации для крупных инсталляций:**
+
+1. Выполнять анонимизацию **в окна низкой нагрузки**, мониторить прогресс через `system.mutations`.
+2. Для очень больших объёмов (>1 ТБ в партиции) использовать паттерн **«холодный архив»** вместо построчной анонимизации:
+   * старые партиции (например, старше 730 дней) экспортируются в отдельное S3-совместимое хранилище в неизменном виде;
+   * в ClickHouse запись заменяется на tombstone (пустой `raw_json`, сохранённые `statement_id` и агрегированные поля для аналитики);
+   * доступ к холодному архиву — через отдельный сервис с ограниченными правами (только чтение), с аудитом каждого обращения.
+3. Для средних объёмов (до 1 ТБ) допустима построчная мутация.
+
+Аналогичная логика применима к Варианту А (TimescaleDB), где мутации дешевле, но всё равно выполняются в фоне.

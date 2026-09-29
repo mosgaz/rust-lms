@@ -26,27 +26,37 @@
 │   ├── STRUCTURE.md              # Настоящий файл: архитектурная карта папок
 │   ├── SPECIFICATION.md          # Бизнес-концепция и требования к платформе
 │   ├── ARCHITECTURE.md           # Сводный ADD: RLS, Open API, LRS, плагины, ETL
-│   ├── NFR.md                    # Нефункциональные требования: SLA, RTO/RPO, latency, лимиты
-│   ├── DB_SCHEMA.md              # Схемы PostgreSQL (RLS), версионирование, i18n, retention, LRS
-│   ├── MIGRATIONS.md             # Регламент миграций БД (sqlx / SeaORM)
-│   ├── OPEN_API.md               # Контракты REST/GraphQL, SCIM 2.0, signed-url, токены, вебхуки
-│   ├── OFFLINE_SYNC.md           # Спецификация Service Workers и IndexedDB для PWA, iOS-лимиты
-│   ├── PLUGIN.md                 # Спецификация рантайма плагинов (WASM/iframe)
+│   ├── NFR.md                    # SLA, RTO/RPO, latency, лимиты, Sizing Guide
+│   ├── DB_SCHEMA.md              # PostgreSQL (RLS), версионирование, i18n, retention, LRS, feature flags, license
+│   ├── MIGRATIONS.md             # Регламент миграций + Runbook для администратора
+│   ├── OPEN_API.md               # REST/GraphQL, SCIM 2.0, signed-url, версионирование
+│   ├── OFFLINE_SYNC.md           # Service Workers и IndexedDB для PWA, iOS-лимиты
+│   ├── PLUGIN.md                 # Рантайм плагинов (iframe / WASM), FSM, подпись, kill switch
 │   ├── PLUGIN_DEVELOPMENT_TEMPLATE.md # ТЗ для разработчиков внешних плагинов
-│   ├── DEPLOY.md                 # Конфигурация Docker/Helm, CSP, Air-gapped деплой
-│   ├── STANDARDS.md              # SCORM, xAPI, LTI, SCIM 2.0, WCAG 2.2 AA, i18n, GDPR, retention
+│   ├── DEPLOY.md                 # Docker Compose, Nginx/CSP, Air-gapped, управление ключами, runbook JWT, Chaos
+│   ├── LICENSING.md              # Офлайн-лицензирование для коробочных поставок
+│   ├── FEATURE_FLAGS.md          # Управление функциональными флагами
+│   ├── STANDARDS.md              # SCORM, xAPI, LTI, SCIM, WCAG, i18n, GDPR, Conformance Testing, Data Portability
 │   ├── COMMUNICATIONS.md         # Чаты, комментарии, уведомления
 │   ├── CONFERENCING.md           # ВКС: WebRTC P2P/SFU, локальные TURN/STUN
-│   ├── ROADMAP.md                # Плановые направления (аналитика, биллинг, поиск, мобильное, аудит)
-│   ├── STATUS.md                 # Матрица текущей готовности фич и слоёв системы
-│   ├── RBAC.md                   # Матрица ролей и доступов внутри тенантов
-│   ├── DIAGNOSTICS.md            # Регламент сквозного логирования и отладки логов
-│   ├── GOTCHAS.md                # Лог технических ловушек сборки и рантайма
+│   ├── ROADMAP.md                # Плановые направления
+│   ├── STATUS.md                 # Матрица готовности фич (3 легенды)
+│   ├── RBAC.md                   # Матрица ролей и доступов
+│   ├── DIAGNOSTICS.md            # Логирование (tracing) и трейсинг (OpenTelemetry)
+│   ├── GOTCHAS.md                # Журнал технических ловушек
 │   ├── docker-compose.yml        # Манифест локального/On-Premise развёртывания
 │   └── decisions/                # Реестр архитектурных решений (ADR)
 │       ├── README.md             # Точка входа реестра ADR
 │       ├── 2026.09.28-0001.md    # RLS вместо схем-per-tenant
-│       └── 2026.09.28-0002.md    # Иммутабельный xAPI в LRS
+│       ├── 2026.09.28-0002.md    # Иммутабельный xAPI в LRS
+│       ├── 2026.09.29-0003.md    # Подпись и kill switch для WASM-плагинов
+│       ├── 2026.09.29-0004.md    # Application-Level Encryption
+│       ├── 2026.09.29-0005.md    # Data Residency: миграция тенанта
+│       ├── 2026.09.29-0006.md    # Выбор OTel backend для SaaS
+│       ├── 2026.09.29-0007.md    # Операционный регламент deprecation API
+│       ├── 2026.09.29-0008.md    # Формат и enforcement лицензионного ключа
+│       ├── 2026.09.29-0009.md    # Архитектура Feature Flags
+│       └── 2026.09.29-0010.md    # Supply Chain Security для WASM-плагинов
 │
 └── crates/                       # Физические Rust-крейты платформы
     ├── shared/                   # Слой сетевых контрактов, структур сущностей и DTO
@@ -81,6 +91,9 @@
 * `src/etl/` — потоковые чанк-парсеры кастомного импорта пользователей (Custom ETL Mapper).
 * `src/scim/` — маппинг SCIM 2.0 (RFC 7643 / 7644) на внутренние сущности `users` / `batches` (см. [`OPEN_API.md`](OPEN_API.md) §3.5).
 * `src/content/` — выдача подписанных URL для медиа, валидация прав доступа (см. [`OPEN_API.md`](OPEN_API.md) §3.6).
+* `src/license/` — валидация лицензионного ключа, enforcement лимитов, чтение/запись таблицы `license` (см. [`LICENSING.md`](LICENSING.md)).
+* `src/features/` — Feature Flags: чтение/запись `feature_flags` и `tenant_feature_flags`, in-memory кэш, LISTEN/NOTIFY-слушатель, API-контроллеры (см. [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md)).
+* `src/sbom/` — генерация SBOM (CycloneDX) для WASM-плагинов, сканирование уязвимостей через `osv-scanner`, интеграция с Revocation List (см. ADR [`2026.09.29-0010.md`](decisions/2026.09.29-0010.md)).
 
 Миграции БД лежат в корневом каталоге `migrations/` (см. [`MIGRATIONS.md`](MIGRATIONS.md)) и не являются модулем внутри `api`.
 
@@ -91,7 +104,7 @@
 * `src/auth/` — сквозной SSO/RBAC слой аутентификации, валидация сессий и установка контекстов ролей.
 * `src/website/` — публичные посадочные страницы, форма входа, публичный реестр верификации сертификатов.
 * `src/student/` — личный кабинет учащегося, плеер прохождения юнитов курса, IndexedDB автономная очередь и рантайм Plugin SDK (потребительская сторона).
-* `src/cpanel/` — Панель Управления (Control Panel) для Администраторов, Инструкторов и Менторов. Полностью компилируется в Lazy-Loaded WASM-модуль (ленивая загрузка, не раздувает бандл студента). Содержит административную сторону рантайма Plugin SDK (превью плагинов, валидация манифестов).
+* `src/cpanel/` — Панель Управления (Control Panel) для Администраторов, Инструкторов и Менторов. Полностью компилируется в Lazy-Loaded WASM-модуль (ленивая загрузка, не раздувает бандл студента). Содержит административную сторону рантайма Plugin SDK (превью плагинов, валидация манифестов), раздел «Лицензия» (статус, потребление) и раздел «Feature Flags» (только делегированные флаги).
 * `src/i18n/` — Fluent-локализация, переключение локали, RTL-логика (см. [`STANDARDS.md`](STANDARDS.md) §«Локализация»).
 * `src/server.rs` — объявления `#[server]` RPC-функций приложения, транзакционно вызывающих методы `crates/api` на стороне сервера.
 
@@ -103,6 +116,9 @@
 * Инициализирует пулы подключений `SQLx` к PostgreSQL и ClickHouse/TimescaleDB.
 * Монтирует Axum-роутер, связывает его с `#[server]` RPC-эндпоинтами крейта `client`, регистрирует REST-эндпоинты Open API ([`OPEN_API.md`](OPEN_API.md)) и запускает Tokio рантайм.
 * Запускает cron-воркеры retention-политик (см. [`STANDARDS.md`](STANDARDS.md) §«Политики удержания данных») и воркеры вебхуков.
+* Выполняет первичную валидацию лицензионного ключа при старте (см. [`LICENSING.md`](LICENSING.md) §4).
+* Поднимает выделенное LISTEN-соединение для Feature Flags (см. [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md) §8.3) и лицензии (`license_changed`).
+* Периодический polling флагов (60 сек) и пересканирование SBOM активных плагинов (см. ADR [`2026.09.29-0010.md`](decisions/2026.09.29-0010.md) §3).
 
 ## 4. Направленность зависимостей и правила изоляции (Dependency Rules)
 

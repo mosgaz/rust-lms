@@ -17,11 +17,12 @@
    - Если меняешь структуру БД, версионирование контента, i18n-поля или логику LRS — изучи `specs/DB_SCHEMA.md` и `specs/MIGRATIONS.md`.
    - Если разрабатываешь или правишь эндпоинты, токены, SCIM 2.0, signed-url или вебхуки — изучи `specs/OPEN_API.md`.
    - Если работаешь над PWA, Service Worker, очередями IndexedDB или медиа-кэшем — изучи `specs/OFFLINE_SYNC.md`.
-   - Если вносишь изменения в рантайм плагинов или SDK — изучи `specs/PLUGIN.md` и шаблон `specs/PLUGIN_DEVELOPMENT_TEMPLATE.md`.
-   - Если правишь конфигурацию контейнеров, сетевые шлюзы или CSP — изучи `specs/DEPLOY.md`.
-   - Если задача затрагивает лицензирование, привязку к hardware или enforcement лимитов — изучи `specs/LICENSING.md`.
+   - Если вносишь изменения в рантайм плагинов, SDK или SBOM — изучи `specs/PLUGIN.md`, `specs/PLUGIN_DEVELOPMENT_TEMPLATE.md` и ADR `specs/decisions/2026.09.29-0010.md`.
+   - Если правишь конфигурацию контейнеров, сетевые шлюзы, CSP, криптоключи или DR-процедуры — изучи `specs/DEPLOY.md`.
+   - Если задача затрагивает лицензирование, привязку к hardware или enforcement лимитов — изучи `specs/LICENSING.md` и ADR `specs/decisions/2026.09.29-0008.md`.
+   - Если задача затрагивает функциональные флаги, делегирование или rollout — изучи `specs/FEATURE_FLAGS.md` и ADR `specs/decisions/2026.09.29-0009.md`.
    - Если задача затрагивает роли, доступы или логирование — изучи `specs/RBAC.md` и `specs/DIAGNOSTICS.md`.
-   - Если задача затрагивает стандарты (SCORM, xAPI, LTI, SCIM), доступность (WCAG 2.2 AA), локализацию (i18n/l10n), compliance (GDPR/CCPA, retention) или Conformance Testing — изучи `specs/STANDARDS.md`.
+   - Если задача затрагивает стандарты (SCORM, xAPI, LTI, SCIM), доступность (WCAG 2.2 AA), локализацию (i18n/l10n), compliance (GDPR/CCPA, retention), Conformance Testing или Data Portability — изучи `specs/STANDARDS.md`.
    - Если задача касается чатов, комментариев или уведомлений — изучи `specs/COMMUNICATIONS.md`.
    - Если задача касается ВКС — изучи `specs/CONFERENCING.md`.
 7. Прочитай `specs/CODING_STANDARDS.md` — следуй правилам full-stack Rust буквально. Это закон, а не рекомендация.
@@ -41,26 +42,27 @@
 |:---|:---|
 | `specs/README.md` | Разводящая страница документации, единая точка навигации. |
 | `CONTRIBUTING.md` | Стандарты коммитов и ветвления. |
-| `specs/SPECIFICATION.md` | Upper-level требования, концепция мультитенантности, иерархия контента, версионирование, retention. |
+| `specs/SPECIFICATION.md` | Upper-level требования, концепция мультитенантности, иерархия контента, версионирование, retention, Feature Flags. |
 | `specs/ARCHITECTURE.md` | Сводный ADD: RLS, Open API, LRS, плагины, ETL. |
 | `specs/NFR.md` | Нефункциональные требования: SLA, RTO/RPO, concurrency, latency budgets, лимиты, Sizing Guide. |
 | `specs/STRUCTURE.md` | Физическая карта папок проекта, зоны ответственности микро-крейтов в Cargo workspace и правила изоляции. |
-| `specs/DB_SCHEMA.md` | Реляционный слой PostgreSQL, RLS, версионирование, i18n, retention, схемы хранения xAPI в LRS. |
+| `specs/DB_SCHEMA.md` | Реляционный слой PostgreSQL, RLS, версионирование, i18n, retention, LRS, feature flags, license, revoked JWT kids. |
 | `specs/MIGRATIONS.md` | Регламент миграций на базе `sqlx` + Runbook для администратора On-Premise. |
 | `specs/OPEN_API.md` | Контракты REST/GraphQL: provisioning, ETL, LRS, offline-sync, SCIM 2.0, signed-url, вебхуки, версионирование. |
-| `specs/OFFLINE_SYNC.md` | Границы PWA офлайна, IndexedDB-очереди, разрешение конфликтов, iOS-лимиты, Signed URLs / DRM. |
-| `specs/PLUGIN.md` | Двухуровневый гибридный рантайм плагинов (iframe / WASM), контракты SDK, FSM, подпись и kill switch. |
+| `specs/OFFLINE_SYNC.md` | Границы PWA офлайна, IndexedDB-очереди, разрешение конфликтов, iOS-лимиты, Signed URLs / DRM, офлайн-шелл формы входа. |
+| `specs/PLUGIN.md` | Двухуровневый гибридный рантайм плагинов (iframe / WASM), контракты SDK, FSM, подпись и kill switch, SBOM. |
 | `specs/PLUGIN_DEVELOPMENT_TEMPLATE.md` | Шаблон ТЗ и UI/UX регламент для команд, разрабатывающих внешние микроприложения (включая a11y). |
-| `specs/DEPLOY.md` | Инфраструктурные требования, Docker Compose, Ingress Nginx, CSP, COOP/COEP, Air-gapped, обновления, DR. |
-| `specs/LICENSING.md` | Офлайн-лицензирование для коробочных поставок (формат ключа, привязка, enforcement, grace period). |
-| `specs/STANDARDS.md` | SCORM, xAPI, LTI, SCIM 2.0, WCAG 2.2 AA, i18n/l10n, GDPR/CCPA, retention, Conformance Testing. |
+| `specs/DEPLOY.md` | Инфраструктура, Docker Compose, Nginx/CSP, COOP/COEP, Air-gapped, управление криптоключами, runbook JWT, Chaos Engineering, сертификаты. |
+| `specs/LICENSING.md` | Офлайн-лицензирование для коробочных поставок (формат ключа, привязка, enforcement, grace period, связь с Feature Flags). |
+| `specs/FEATURE_FLAGS.md` | Управление функциональными флагами: глобальные + tenant overrides, PostgreSQL + LISTEN/NOTIFY. |
+| `specs/STANDARDS.md` | SCORM, xAPI, LTI, SCIM 2.0, WCAG 2.2 AA, i18n/l10n, GDPR/CCPA, retention, Conformance Testing, Data Portability. |
 | `specs/COMMUNICATIONS.md` | Чаты, комментарии, уведомления. |
-| `specs/CONFERENCING.md` | Встроенная ВКС: WebRTC P2P/SFU, локальные TURN/STUN. |
-| `specs/ROADMAP.md` | Плановые направления (аналитика, сертификация, биллинг, поиск, мобильное, аудит, Conformance Testing). |
+| `specs/CONFERENCING.md` | Встроенная ВКС: WebRTC P2P/SFU, fallback, ограничения MVP, локальные TURN/STUN. |
+| `specs/ROADMAP.md` | Плановые направления (аналитика, сертификация, биллинг, поиск, мобильное, аудит, Conformance Testing, a11y, Data Portability, Feature Flags ext.). |
 | `specs/CODING_STANDARDS.md` | Правила написания full-stack Rust кода, запреты, стандарты логирования и управления памятью. |
-| `specs/STATUS.md` | Матрица текущей готовности слоёв и фич. **Источник истины по легенде статусов:** 🔴 НЕ СДЕЛАНО / 🟡 ЗАГЛУШКА / 🟢 ГОТОВО / ⚪ ПЛАН. |
-| `specs/RBAC.md` | Матрица распределения ролей (Администратор, Инструктор, Ментор, Обучающийся, Наблюдатель) внутри тенантов. |
-| `specs/DIAGNOSTICS.md` | Сквозное структурированное логирование (`tracing`) и распределённый трейсинг (`OpenTelemetry`). |
+| `specs/STATUS.md` | Матрица текущей готовности слоёв и фич. **Три легенды:** A (документация), B (реализация), C (планы). |
+| `specs/RBAC.md` | Матрица распределения ролей внутри тенантов. |
+| `specs/DIAGNOSTICS.md` | Логирование (`tracing`) и распределённый трейсинг (`OpenTelemetry`). |
 | `specs/GOTCHAS.md` | Журнал зафиксированных технических ловушек сборки, зависимостей и WASM-рантайма. |
 | `specs/decisions/` | Папка реестра архитектурных решений (ADR). Точка входа — `specs/decisions/README.md`. |
 
@@ -99,6 +101,8 @@ crates/
 - Менять политики RLS, триггеры или роли БД без явного ревью владельца тенант-модели и без ADR (см. `specs/decisions/`).
 - Менять значения в `specs/NFR.md` без ADR и без нагрузочного теста (см. `specs/NFR.md` §9).
 - Менять формат лицензионного ключа или политику enforcement без ADR (см. `specs/LICENSING.md` §12 и `specs/decisions/2026.09.29-0008.md`).
+- Менять архитектуру Feature Flags (модель хранения, механизм инвалидации, каскадную проверку) без ADR (см. `specs/FEATURE_FLAGS.md` §12 и `specs/decisions/2026.09.29-0009.md`).
+- Публиковать WASM-плагины без SBOM (CycloneDX) и без сканирования уязвимостей (см. `specs/decisions/2026.09.29-0010.md`).
 - Писать синхронный блокирующий код в асинхронных пулах Tokio — это приводит к деградации СУБД-слоя.
 - Использовать `println!` или `panic!` — только структурированное логирование через `tracing::*` и безопасный возврат `Result`.
 
@@ -108,7 +112,7 @@ crates/
 
 - АКТУАЛИЗАЦИЯ КАРТЫ ПРОЕКТА: При создании любого нового файла внутри `crates/` (нового модуля, компонента, папки) или изменении структуры ты ОБЯЗАН немедленно отразить это изменение в файле `specs/STRUCTURE.md`. Структура каталогов и граф зависимостей в `STRUCTURE.md` должны на 100% соответствовать реальному содержимому репозитория.
 - Новое архитектурное решение → Обязательно создай ADR в директории `specs/decisions/[гггг.мм.дд]-[NNNN].md` (формат даты: `гггг.мм.дд`, номер `0001` = следующий свободный, с обязательным указанием даты и времени фиксации в шапке документа и строкой в реестре `specs/decisions/README.md`).
-- Изменение статуса реализации фичи → Обнови статус в файле `specs/STATUS.md` и внеси строку в журнал `CHANGELOG.md`.
+- Изменение статуса реализации фичи → Обнови статус в файле `specs/STATUS.md` (с учётом трёх легенд) и внеси строку в журнал `CHANGELOG.md`.
 - Изменение соответствия стандартам (SCORM/xAPI/LTI/SCIM/WCAG/GDPR) → Обнови `specs/STANDARDS.md`.
 - Изменение в коммуникациях или уведомлениях → Обнови `specs/COMMUNICATIONS.md`.
 - Изменение в ВКС → Обнови `specs/CONFERENCING.md`.
@@ -116,6 +120,8 @@ crates/
 - Изменение в политиках retention → Обнови `specs/STANDARDS.md` §«Политики удержания данных» и `specs/DB_SCHEMA.md` (таблица `retention_policies`).
 - Изменение лимитов или latency budgets → Обнови `specs/NFR.md`.
 - Изменение в подсистеме лицензирования → Обнови `specs/LICENSING.md` и ADR-0008.
+- Изменение в подсистеме Feature Flags → Обнови `specs/FEATURE_FLAGS.md` и ADR-0009.
+- Изменение в supply chain security (SBOM, сканирование, Revocation по CVE) → Обнови ADR-0010 и `specs/PLUGIN.md` §7.
 - Изменение состава `specs/` (новый файл, переименование, удаление) → Обнови `specs/README.md` и `specs/STRUCTURE.md` §2.
 - Новая ловушка рантайма/сборки → Запиши ее в `specs/GOTCHAS.md`.
 

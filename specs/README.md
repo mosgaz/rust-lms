@@ -1,136 +1,87 @@
-# Спецификация Технического Задания: Структура Проекта
+# Спецификации проекта (specs/)
 
-**Файл спецификации:** `specs/STRUCTURE.md`
+Единая точка входа в документацию. Корневой [`README.md`](../README.md) содержит только обзор проекта, технологический стек и быстрый старт — вся навигация по документации живёт здесь, в `specs/README.md`.
 
-> Этот файл должен на 100% соответствовать реальному содержимому `crates/`. Любое создание/удаление/переименование файла внутри `crates/` обязано быть отражено здесь немедленно (см. [`AGENTS.md`](AGENTS.md) §4).
+## 🧭 Порядок чтения
 
-## 1. Концепция Workspace-архитектуры
+### Для человека
 
-Проект спроектирован по принципу микро-крейтов (micro-crates) в рамках монорепозитория (Cargo workspace). Каждая папка внутри `crates/` решает изолированную задачу рантайма, предотвращая циклическое связывание и утечку нативного серверного кода в клиентский WebAssembly-бандл.
+1. [`SPECIFICATION.md`](SPECIFICATION.md) — бизнес-концепция, иерархия программ, когорт, роли.
+2. [`ARCHITECTURE.md`](ARCHITECTURE.md) — сводный ADD: RLS, Open API, LRS, плагины, ETL.
+3. [`NFR.md`](NFR.md) — количественные NFR и SLA: RTO/RPO, concurrency, latency budgets, лимиты, sizing.
+4. [`STRUCTURE.md`](STRUCTURE.md) — карта папок, состав Cargo workspace, Dependency Rules.
+5. Далее — профильные спецификации по зоне ответственности (см. таблицы ниже).
 
-Лимит размера крейта — ≤ 1500 строк бизнес-логики (без учёта тестов); см. [`AGENTS.md`](AGENTS.md) §6.
+### Для AI-агента
 
-## 2. Глобальная иерархия каталогов репозитория
+1. [`AGENTS.md`](AGENTS.md) — первичная точка входа: обязательные шаги перед задачей, запреты, чек-лист.
+2. [`SPECIFICATION.md`](SPECIFICATION.md) — источник истины по бизнес-требованиям.
+3. [`STRUCTURE.md`](STRUCTURE.md) — структура каталогов и Dependency Rules.
+4. [`CODING_STANDARDS.md`](CODING_STANDARDS.md) — правила full-stack Rust, RLS, запреты.
+5. Далее — профильные спецификации по зоне ответственности.
 
-```text
-.
-├── Cargo.toml                    # Глобальный манифест Cargo workspace
-├── CONTRIBUTING.md               # Стандарты коммитов и ветвления (root)
-├── README.md                     # Главный путеводитель по репозиторию (root)
-├── CHANGELOG.md                  # Журнал изменений (Conventional Commits)
-│
-├── specs/                        # Директория архитектурных спецификаций и ТЗ
-│   ├── README.md                 # Разводящая страница документации
-│   ├── AGENTS.md                 # Инструкции и чек-листы для AI-агентов
-│   ├── CODING_STANDARDS.md       # Обязательные стандарты кодинга (full-stack Rust / RLS)
-│   ├── STRUCTURE.md              # Настоящий файл: архитектурная карта папок
-│   ├── SPECIFICATION.md          # Бизнес-концепция и требования к платформе
-│   ├── ARCHITECTURE.md           # Сводный ADD: RLS, Open API, LRS, плагины, ETL
-│   ├── NFR.md                    # Нефункциональные требования: SLA, RTO/RPO, latency, лимиты, Sizing Guide
-│   ├── DB_SCHEMA.md              # Схемы PostgreSQL (RLS), версионирование, i18n, retention, LRS
-│   ├── MIGRATIONS.md             # Регламент миграций БД + Runbook для администратора On-Premise
-│   ├── OPEN_API.md               # Контракты REST/GraphQL, SCIM 2.0, signed-url, версионирование
-│   ├── OFFLINE_SYNC.md           # Спецификация Service Workers и IndexedDB для PWA, iOS-лимиты
-│   ├── PLUGIN.md                 # Рантайм плагинов (iframe / WASM), FSM, подпись и kill switch
-│   ├── PLUGIN_DEVELOPMENT_TEMPLATE.md # ТЗ для разработчиков внешних плагинов (включая a11y)
-│   ├── DEPLOY.md                 # Docker Compose, Nginx/CSP, COOP/COEP, Air-gapped, обновления, DR
-│   ├── LICENSING.md              # Офлайн-лицензирование для коробочных поставок
-│   ├── STANDARDS.md              # SCORM, xAPI, LTI, SCIM 2.0, WCAG 2.2 AA, i18n, GDPR, retention, Conformance Testing
-│   ├── COMMUNICATIONS.md         # Чаты, комментарии, уведомления
-│   ├── CONFERENCING.md           # ВКС: WebRTC P2P/SFU, локальные TURN/STUN
-│   ├── ROADMAP.md                # Плановые направления (аналитика, биллинг, поиск, мобильное, аудит)
-│   ├── STATUS.md                 # Матрица текущей готовности фич и слоёв системы
-│   ├── RBAC.md                   # Матрица ролей и доступов внутри тенантов
-│   ├── DIAGNOSTICS.md            # Логирование (tracing) и распределённый трейсинг (OpenTelemetry)
-│   ├── GOTCHAS.md                # Лог технических ловушек сборки и рантайма
-│   ├── docker-compose.yml        # Манифест локального/On-Premise развёртывания
-│   └── decisions/                # Реестр архитектурных решений (ADR)
-│       ├── README.md             # Точка входа реестра ADR
-│       ├── 2026.09.28-0001.md    # RLS вместо схем-per-tenant
-│       ├── 2026.09.28-0002.md    # Иммутабельный xAPI в LRS
-│       ├── 2026.09.29-0003.md    # Подпись и kill switch для WASM-плагинов
-│       ├── 2026.09.29-0004.md    # Application-Level Encryption
-│       ├── 2026.09.29-0005.md    # Data Residency: миграция тенанта
-│       ├── 2026.09.29-0006.md    # Выбор OTel backend для SaaS
-│       ├── 2026.09.29-0007.md    # Операционный регламент deprecation API
-│       └── 2026.09.29-0008.md    # Формат и enforcement лицензионного ключа
-│
-└── crates/                       # Физические Rust-крейты платформы
-    ├── shared/                   # Слой сетевых контрактов, структур сущностей и DTO
-    ├── ui/                       # Общая библиотека Leptos UI компонентов и Tailwind CSS
-    ├── api/                      # Ядро бизнес-логики, СУБД PostgreSQL (RLS) и LRS (без Leptos)
-    ├── client/                   # Изоморфный Full-Stack веб-интерфейс, PWA и #[server] функции
-    └── server/                   # Сервер выполнения на Axum (Точка входа, Main)
-```
+---
 
-## 3. Детализация внутренней структуры крейтов
+## 📚 Бизнес и архитектура
 
-### 3.1. Крейт: `crates/shared` (DTO & Contracts)
+| Документ | Назначение |
+|:---|:---|
+| [`SPECIFICATION.md`](SPECIFICATION.md) | Upper-level требования, концепция мультитенантности, иерархия контента, версионирование, сертификации, retention, Feature Flags. |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Сводный ADD: RLS, Open API, LRS, плагины, ETL. Профильные источники истины — ниже. |
+| [`NFR.md`](NFR.md) | Нефункциональные требования: SLA, RTO/RPO, concurrency, latency budgets, лимиты, деградация, Sizing Guide. |
+| [`STRUCTURE.md`](STRUCTURE.md) | Физическая карта папок, зоны ответственности крейтов, правила изоляции и Dependency Rules. |
+| [`STATUS.md`](STATUS.md) | Матрица готовности слоёв и фич (три легенды: документация, реализация, планы). |
+| [`ROADMAP.md`](ROADMAP.md) | Плановые направления: аналитика, сертификация, биллинг, поиск, мобильное, аудит, Conformance Testing, a11y, Data Portability, Feature Flags ext. |
+| [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md) | Управление функциональными флагами (глобальные + tenant overrides, PostgreSQL + LISTEN/NOTIFY). |
+| [`decisions/`](decisions/) | Реестр архитектурных решений (ADR). Точка входа — [`decisions/README.md`](decisions/README.md). |
 
-Абсолютно плоский крейт без привязки к СУБД или UI. Содержит структуры данных, компилируемые как под `wasm32`, так и под нативный x86_64/arm64 сервер.
+## 🗄️ Данные и API
 
-* `src/models/` — структуры сущностей (`User`, `Course`, `Program`, `Batch`, `Certificate`).
-* `src/dto/` — запросы и ответы API-интерфейсов (`ImportPayload`, `SyncPackage`).
-* `src/xapi/` — строгие иммутабельные типы для генерации xAPI Statements.
+| Документ | Назначение |
+|:---|:---|
+| [`DB_SCHEMA.md`](DB_SCHEMA.md) | Реляционный слой PostgreSQL, RLS, версионирование контента, i18n-метаданные, retention, LRS, feature flags, license, revoked JWT kids. |
+| [`MIGRATIONS.md`](MIGRATIONS.md) | Регламент миграций на базе `sqlx` (альтернатива — `SeaORM`) + Runbook для администратора On-Premise. |
+| [`OPEN_API.md`](OPEN_API.md) | Контракты REST/GraphQL: provisioning, ETL, LRS, offline-sync, SCIM 2.0, signed-url, вебхуки, версионирование. |
 
-### 3.2. Крейт: `crates/ui` (Shared UI Library)
+## 🔌 Плагины и рантайм
 
-Изолированная дизайн-система платформы. Содержит переиспользуемые Leptos-компоненты хоста (формы, списки, кнопки, диалоги, тостеры уведомлений Fluent-локализации), не привязанные к конкретным роутам страниц. Должна компилироваться в WASM-контур.
+| Документ | Назначение |
+|:---|:---|
+| [`PLUGIN.md`](PLUGIN.md) | Двухуровневый рантайм (iframe / WASM), контракты SDK, FSM, подпись/верификация/kill switch, SBOM. |
+| [`PLUGIN_DEVELOPMENT_TEMPLATE.md`](PLUGIN_DEVELOPMENT_TEMPLATE.md) | Шаблон ТЗ и UI/UX регламент для внешних команд (включая a11y). |
 
-Ответственность за соответствие WCAG 2.2 AA (см. [`STANDARDS.md`](STANDARDS.md) §«Доступность») лежит на этом крейте: семантика, ARIA, клавиатурный фокус, контрастность компонентов. Здесь же — поддержка RTL и локализация форматов (см. [`STANDARDS.md`](STANDARDS.md) §«Локализация»).
+## 🌐 Клиент, PWA, коммуникации
 
-### 3.3. Крейт: `crates/api` (Business Logic & Data Layer)
+| Документ | Назначение |
+|:---|:---|
+| [`OFFLINE_SYNC.md`](OFFLINE_SYNC.md) | Границы PWA-офлайна, IndexedDB-очереди, разрешение конфликтов, iOS-ограничения, Signed URLs / DRM, офлайн-шелл формы входа. |
+| [`COMMUNICATIONS.md`](COMMUNICATIONS.md) | Чаты, комментарии, уведомления. |
+| [`CONFERENCING.md`](CONFERENCING.md) | Встроенная ВКС: WebRTC P2P/SFU, fallback, ограничения MVP, локальные TURN/STUN. |
 
-Серверное бэкенд-ядро обработки данных. **Импорт макросов Leptos сюда аппаратно запрещен.**
+## 📜 Стандарты, роли, качество
 
-* `src/database/` — менеджер пула соединений SQLx и RLS-интерцептор (`set_config('app.current_tenant_id', $1, true)`, см. [`CODING_STANDARDS.md`](CODING_STANDARDS.md) §2.1).
-* `src/lrs/` — низкоуровневая обработка записей LRS (пакетный импорт в TimescaleDB или ClickHouse).
-* `src/etl/` — потоковые чанк-парсеры кастомного импорта пользователей (Custom ETL Mapper).
-* `src/scim/` — маппинг SCIM 2.0 (RFC 7643 / 7644) на внутренние сущности `users` / `batches` (см. [`OPEN_API.md`](OPEN_API.md) §3.5).
-* `src/content/` — выдача подписанных URL для медиа, валидация прав доступа (см. [`OPEN_API.md`](OPEN_API.md) §3.6).
-* `src/license/` — валидация лицензионного ключа, enforcement лимитов, чтение/запись таблицы `license` (см. [`LICENSING.md`](LICENSING.md)).
+| Документ | Назначение |
+|:---|:---|
+| [`STANDARDS.md`](STANDARDS.md) | SCORM (Режим 1 / Режим 2), xAPI, LTI, SCIM 2.0, WCAG 2.2 AA, i18n/l10n, GDPR/CCPA, retention, Conformance Testing, Data Portability. |
+| [`RBAC.md`](RBAC.md) | Матрица ролей (Администратор, Инструктор, Ментор, Обучающийся, Наблюдатель) внутри тенантов. |
+| [`DIAGNOSTICS.md`](DIAGNOSTICS.md) | Сквозное структурированное логирование (`tracing`), распределённый трейсинг (OpenTelemetry). |
+| [`CODING_STANDARDS.md`](CODING_STANDARDS.md) | Правила full-stack Rust, запреты, управление памятью. |
+| [`GOTCHAS.md`](GOTCHAS.md) | Журнал зафиксированных технических ловушек сборки и рантайма. |
 
-Миграции БД лежат в корневом каталоге `migrations/` (см. [`MIGRATIONS.md`](MIGRATIONS.md)) и не являются модулем внутри `api`.
+## 🚀 Инфраструктура и процесс
 
-### 3.4. Крейт: `crates/client` (Isomorphic Frontend & RPC)
+### Внутренние документы `specs/`
 
-Единое full-stack Leptos приложение сайта. Компилируется в PWA. Содержит сквозную сессию и роутинг, разделенный на внутренние функциональные контуры:
+| Документ | Назначение |
+|:---|:---|
+| [`DEPLOY.md`](DEPLOY.md) | Docker Compose, Ingress Nginx, CSP, COOP/COEP, Air-gapped On-Premise, Vault, OTel, обновления, DR, сертификаты, управление криптоключами, runbook компрометации JWT, Chaos Engineering. |
+| [`LICENSING.md`](LICENSING.md) | Подсистема офлайн-лицензирования для коробочных поставок (формат ключа, привязка, enforcement, grace period, связь с Feature Flags). |
+| [`AGENTS.md`](AGENTS.md) | Инструкции для AI-агентов (Claude Code, Cursor, Cline, Codex, Copilot). |
+| [`docker-compose.yml`](docker-compose.yml) | Манифест локального / On-Premise развёртывания (команда запуска — в корневом [`README.md`](../README.md)). |
 
-* `src/auth/` — сквозной SSO/RBAC слой аутентификации, валидация сессий и установка контекстов ролей.
-* `src/website/` — публичные посадочные страницы, форма входа, публичный реестр верификации сертификатов.
-* `src/student/` — личный кабинет учащегося, плеер прохождения юнитов курса, IndexedDB автономная очередь и рантайм Plugin SDK (потребительская сторона).
-* `src/cpanel/` — Панель Управления (Control Panel) для Администраторов, Инструкторов и Менторов. Полностью компилируется в Lazy-Loaded WASM-модуль (ленивая загрузка, не раздувает бандл студента). Содержит административную сторону рантайма Plugin SDK (превью плагинов, валидация манифестов) и раздел «Лицензия» (статус, потребление).
-* `src/i18n/` — Fluent-локализация, переключение локали, RTL-логика (см. [`STANDARDS.md`](STANDARDS.md) §«Локализация»).
-* `src/server.rs` — объявления `#[server]` RPC-функций приложения, транзакционно вызывающих методы `crates/api` на стороне сервера.
+### Внешние документы (корень репозитория)
 
-### 3.5. Крейт: `crates/server` (Axum Runtime Host)
-
-Чисто серверное нативное приложение. Единственная точка входа, содержащая функцию `fn main()`.
-
-* Считывает инфраструктурную конфигурацию `config.toml`.
-* Инициализирует пулы подключений `SQLx` к PostgreSQL и ClickHouse/TimescaleDB.
-* Монтирует Axum-роутер, связывает его с `#[server]` RPC-эндпоинтами крейта `client`, регистрирует REST-эндпоинты Open API ([`OPEN_API.md`](OPEN_API.md)) и запускает Tokio рантайм.
-* Запускает cron-воркеры retention-политик (см. [`STANDARDS.md`](STANDARDS.md) §«Политики удержания данных») и воркеры вебхуков.
-* Выполняет первичную валидацию лицензионного ключа при старте (см. [`LICENSING.md`](LICENSING.md) §4).
-
-## 4. Направленность зависимостей и правила изоляции (Dependency Rules)
-
-```mermaid
-flowchart TD
-    server["crates/server<br/>(Axum Main Host)"]
-    client["crates/client<br/>(Leptos App: website / student / cpanel)"]
-    api["crates/api<br/>(Data Layer, без Leptos)"]
-    ui["crates/ui<br/>(Shared UI Kit)"]
-    shared["crates/shared<br/>(Flat DTOs & xAPI Schemas)"]
-
-    server --> client
-    server --> api
-    client --> ui
-    client --> api
-    api --> shared
-    ui --> shared
-```
-
-1. **Запрет обратного импорта:** Крейт `shared` не знает ничего о существовании верхних слоев. Крейт `api` никогда не зависит от Leptos-приложения `client`.
-2. **Изоляция WASM-контура:** Крейты `ui` и `client` компилируются под таргет `wasm32-unknown-unknown` для работы в браузере. Им запрещено напрямую использовать нативные методы `crates/api` или `crates/server`. Вся связь между фронтенд-компонентами и бэкенд-логикой идет строго через объявления Leptos `#[server]` RPC-функций или асинхронные вызовы сетевого Open API.
-3. **Идемпотентность типов:** Общие структуры в `shared` должны использовать примитивы, одинаково сериализуемые как макросами `serde` для сервера, так и `serde_wasm_bindgen` для клиента.
+| Документ | Назначение |
+|:---|:---|
+| [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | Стандарты коммитов и ветвления (Conventional Commits). |
+| [`../CHANGELOG.md`](../CHANGELOG.md) | Журнал изменений (заполняется по Conventional Commits). |
