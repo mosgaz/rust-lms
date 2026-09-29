@@ -8,8 +8,9 @@
 
 1. [`SPECIFICATION.md`](SPECIFICATION.md) — бизнес-концепция, иерархия программ, когорт, роли.
 2. [`ARCHITECTURE.md`](ARCHITECTURE.md) — сводный ADD: RLS, Open API, LRS, плагины, ETL.
-3. [`STRUCTURE.md`](STRUCTURE.md) — карта папок, состав Cargo workspace, Dependency Rules.
-4. Далее — профильные спецификации по зоне ответственности (см. таблицы ниже).
+3. [`NFR.md`](NFR.md) — количественные NFR и SLA: RTO/RPO, concurrency, latency budgets, лимиты.
+4. [`STRUCTURE.md`](STRUCTURE.md) — карта папок, состав Cargo workspace, Dependency Rules.
+5. Далее — профильные спецификации по зоне ответственности (см. таблицы ниже).
 
 ### Для AI-агента
 
@@ -25,8 +26,9 @@
 
 | Документ | Назначение |
 |:---|:---|
-| [`SPECIFICATION.md`](SPECIFICATION.md) | Upper-level требования, концепция мультитенантности, иерархия контента и сертификаций. |
+| [`SPECIFICATION.md`](SPECIFICATION.md) | Upper-level требования, концепция мультитенантности, иерархия контента, версионирование, сертификации, retention. |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Сводный ADD: RLS, Open API, LRS, плагины, ETL. Профильные источники истины — ниже. |
+| [`NFR.md`](NFR.md) | Нефункциональные требования: SLA, RTO/RPO, concurrency, latency budgets, лимиты, деградация. |
 | [`STRUCTURE.md`](STRUCTURE.md) | Физическая карта папок, зоны ответственности крейтов, правила изоляции и Dependency Rules. |
 | [`STATUS.md`](STATUS.md) | Матрица готовности слоёв и фич (проектирование / реализация / план). |
 | [`ROADMAP.md`](ROADMAP.md) | Плановые направления: аналитика, сертификация, биллинг, поиск, мобильное, аудит. |
@@ -36,9 +38,9 @@
 
 | Документ | Назначение |
 |:---|:---|
-| [`DB_SCHEMA.md`](DB_SCHEMA.md) | Реляционный слой PostgreSQL, Row-Level Security (RLS), схемы хранения xAPI в LRS. |
+| [`DB_SCHEMA.md`](DB_SCHEMA.md) | Реляционный слой PostgreSQL, RLS, версионирование контента, i18n-метаданные, retention-таблица, схемы LRS. |
 | [`MIGRATIONS.md`](MIGRATIONS.md) | Регламент миграций на базе `sqlx` (альтернатива — `SeaORM`). |
-| [`OPEN_API.md`](OPEN_API.md) | Контракты REST/GraphQL, provisioning тенантов, Opaque-токены, воркер вебхуков. |
+| [`OPEN_API.md`](OPEN_API.md) | Контракты REST/GraphQL: provisioning, ETL, LRS, offline-sync, SCIM 2.0, signed-url, вебхуки. |
 
 ## 🔌 Плагины и рантайм
 
@@ -51,7 +53,7 @@
 
 | Документ | Назначение |
 |:---|:---|
-| [`OFFLINE_SYNC.md`](OFFLINE_SYNC.md) | Границы PWA-офлайна, IndexedDB-очереди, разрешение конфликтов. |
+| [`OFFLINE_SYNC.md`](OFFLINE_SYNC.md) | Границы PWA-офлайна, IndexedDB-очереди, разрешение конфликтов, iOS-ограничения, Signed URLs / DRM. |
 | [`COMMUNICATIONS.md`](COMMUNICATIONS.md) | Чаты, комментарии, уведомления. |
 | [`CONFERENCING.md`](CONFERENCING.md) | Встроенная ВКС: WebRTC P2P/SFU, локальные TURN/STUN. |
 
@@ -59,7 +61,7 @@
 
 | Документ | Назначение |
 |:---|:---|
-| [`STANDARDS.md`](STANDARDS.md) | SCORM, xAPI, LTI, WCAG 2.2 AA, GDPR/CCPA. |
+| [`STANDARDS.md`](STANDARDS.md) | SCORM (конвертация / runtime), xAPI, LTI, SCIM 2.0, WCAG 2.2 AA, i18n/l10n, GDPR/CCPA, retention policies. |
 | [`RBAC.md`](RBAC.md) | Матрица ролей (Администратор, Инструктор, Ментор, Обучающийся, Наблюдатель) внутри тенантов. |
 | [`DIAGNOSTICS.md`](DIAGNOSTICS.md) | Сквозное структурированное логирование (`tracing`). |
 | [`CODING_STANDARDS.md`](CODING_STANDARDS.md) | Правила full-stack Rust, запреты, управление памятью. |

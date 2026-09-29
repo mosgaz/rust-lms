@@ -8,6 +8,7 @@
 > - Рантайм плагинов (iframe / WASM) — [`PLUGIN.md`](PLUGIN.md)
 > - Offline-First PWA и синхронизация — [`OFFLINE_SYNC.md`](OFFLINE_SYNC.md)
 > - Стандарты (SCORM/xAPI/LTI/WCAG/GDPR) — [`STANDARDS.md`](STANDARDS.md)
+> - NFR и SLA — [`NFR.md`](NFR.md)
 >
 > При расхождении между этим документом и профильным файлом — приоритет у профильного файла.
 
@@ -24,14 +25,17 @@
    * Создаются глобальные политики (Security Policies), которые автоматически фильтруют любые SQL-запросы (`SELECT`, `UPDATE`, `DELETE`) по значению `tenant_id`, установленному в текущей сессии подключения бэкенда к СУБД.
    * Бэкенд на Rust (Axum) при обработке запроса извлекает идентификатор тенанта из SSO-контекста и перед выполнением бизнес-транзакции устанавливает переменную сессии в пуле соединений (см. [`CODING_STANDARDS.md`](CODING_STANDARDS.md) §2.1). Внешний запрос физически не способен считать строки чужого тенанта, даже если в коде бэкенда допущена логическая ошибка в `WHERE`.
 
+> **Границы применимости.** «Аппаратная» гарантия RLS действует только для реляционного слоя PostgreSQL (Вариант А LRS, `tenant_api_keys`, все бизнес-таблицы). Для Варианта Б LRS (ClickHouse) изоляция обеспечивается иначе — см. [`DB_SCHEMA.md`](DB_SCHEMA.md) §2 Вариант Б. Требования к тестам изоляции обязательны для обоих вариантов.
+
 ### 1.2. Концептуальная схема Core-базы данных (Entities & Relations)
 
-> Имена полей синхронизированы с [`DB_SCHEMA.md`](DB_SCHEMA.md) §1.2. При расхождении приоритет у `DB_SCHEMA.md`.
+> Имена полей синхронизированы с [`DB_SCHEMA.md`](DB_SCHEMA.md) §1.2. При расхождении приоритет у `DB_SCHEMA.md`. Сводка ниже — обзорная; полные типы, ограничения и индексы — в `DB_SCHEMA.md`.
 
 #### Сущность 1: tenants (Глобальная таблица)
 
 * `id`: UUID (Primary Key)
 * `custom_domain`: VARCHAR(255) (Уникальный внешний веб-адрес тенанта, NULLable)
+* `default_locale`: VARCHAR(16) (BCP-47: `'en'`, `'ru'`, `'ar'` — основной язык тенанта)
 * `sso_config`: JSONB (Настройки интеграции: OIDC Client ID, Secret, SAML Metadata, LDAP endpoints)
 * `branding_config`: JSONB (Логотипы, конфигурация переменных Tailwind CSS)
 * `status`: VARCHAR(32) (Ограничение CHECK: `'active'`, `'suspended'`, `'archived'`)
@@ -45,6 +49,7 @@
 * `email`: VARCHAR(255)
 * `first_name` / `last_name`: VARCHAR(128)
 * `system_role`: VARCHAR(32) (Ограничение CHECK: `'admin'`, `'instructor'`, `'mentor'`, `'learner'`, `'observer'`)
+* `locale`: VARCHAR(16) (BCP-47, NULLable — наследуется от `tenants.default_locale`)
 * `metadata`: JSONB (Динамические поля, заполненные через Custom ETL Mapper)
 * **Индексы:** Композитный уникальный индекс `(tenant_id, external_id)` и `(tenant_id, email)`.
 
@@ -52,43 +57,66 @@
 
 * `id`: UUID (Primary Key)
 * `tenant_id`: UUID (Foreign Key -> tenants.id)
-* `title`: VARCHAR(255)
-* `description`: TEXT
-* `certification_rules`: JSONB (Правила автоматического триггера выпуска сертификатов при закрытии всех дочерних элементов программы)
+* `title` / `title_i18n` (JSONB) / `description` / `description_i18n` (JSONB)
+* `version`: INTEGER (NOT NULL, DEFAULT 1)
+* `certification_rules`: JSONB (Правила автоматического триггера выпуска сертификатов)
 
 #### Сущность 4: courses (Изолированная таблица тенанта)
 
 * `id`: UUID (Primary Key)
 * `tenant_id`: UUID (Foreign Key -> tenants.id)
 * `program_id`: UUID (Foreign Key -> programs.id, NULLable)
-* `title`: VARCHAR(255)
+* `title` / `title_i18n` (JSONB) / `description` / `description_i18n` (JSONB)
+* `version`: INTEGER (NOT NULL, DEFAULT 1)
 * `course_tree`: JSONB (Блочное дерево юнитов, текстовых блоков и ссылок на плагины)
 
-#### Сущность 5: batches (Группы совместного обучения)
+#### Сущность 5: course_versions (Изолированная таблица тенанта)
+
+Снапшоты версий курса для аудита и механизма «заморозки версии контента для когорты».
 
 * `id`: UUID (Primary Key)
 * `tenant_id`: UUID (Foreign Key -> tenants.id)
 * `course_id`: UUID (Foreign Key -> courses.id)
+* `version`: INTEGER (NOT NULL)
+* `course_tree`: JSONB (Снапшот структуры на момент публикации)
+* `published_at` / `published_by`: TIMESTAMPTZ / UUID
+
+#### Сущность 6: batches (Группы совместного обучения)
+
+* `id`: UUID (Primary Key)
+* `tenant_id`: UUID (Foreign Key -> tenants.id)
+* `course_id`: UUID (Foreign Key -> courses.id)
+* `content_version`: INTEGER (NOT NULL) — версия курса, зафиксированная на момент старта когорты
 * `title`: VARCHAR(128) (Название потока, например «Когорта 2026-А»)
 * `timeline_config`: JSONB (Календарные дедлайны для юнитов, даты живых сессий)
 
-#### Сущность 6: quizzes & assignments (Аттестация)
+#### Сущность 7: quizzes & assignments (Аттестация)
 
 * `id`: UUID (Primary Key)
 * `tenant_id`: UUID (Foreign Key -> tenants.id)
 * `course_id`: UUID (Foreign Key -> courses.id)
-* `unit_id`: VARCHAR(128) (Идентификатор блока в структуре курса)
-* `content_data`: JSONB (Для тестов: пул вопросов, типы ответов. Для заданий: описание практики, файлы, рубрикаторы оценки)
+* `unit_id`: VARCHAR(128)
+* `title_i18n` (JSONB), `version`: INTEGER
+* `content_data` / `pool_config` / `passing_rules` / `evaluation_rubric`: JSONB
 
-#### Сущность 7: certificates (Выданные достижения)
+#### Сущность 8: certificates (Выданные достижения)
 
 * `id`: UUID (Primary Key)
 * `tenant_id`: UUID (Foreign Key -> tenants.id)
 * `user_id`: UUID (Foreign Key -> users.id)
 * `target_type`: VARCHAR(32) (Ограничение CHECK: `'course'`, `'program'`, `'batch'`)
-* `target_id`: UUID (Идентификатор сущности, за которую выдан сертификат)
-* `verification_hash`: VARCHAR(64) (Уникальный публичный хэш-код для проверки)
+* `target_id`: UUID
+* `verification_hash`: VARCHAR(64)
 * `issued_at`: TIMESTAMPTZ
+
+#### Сущность 9: retention_policies (Политики ILM)
+
+* `id`: UUID (Primary Key)
+* `tenant_id`: UUID (Foreign Key -> tenants.id)
+* `data_class`: VARCHAR(64) (CHECK: `'xapi_statements'`, `'audit_log'`, `'chat_messages'`, `'etl_logs'`, `'certificates'`)
+* `retention_days`: INTEGER
+* `action`: VARCHAR(32) (CHECK: `'archive'`, `'anonymize'`, `'delete'`, `'keep'`)
+* `enabled`: BOOLEAN
 
 ---
 
@@ -96,17 +124,26 @@
 
 ### 2.1. Механизм авторизации внешних систем
 
-Платформа использует два изолированных контура генерации и валидации ключей доступа.
+Платформа использует **два принципиально разных типа токенов** с разными жизненными циклами и способами валидации.
 
-1. **Контур Глобального API (Уровень платформы):**
-   * Токены выпускаются только супер-администратором системы.
-   * Тип: Ограниченные по времени асимметричные JWT (подписанные приватным ключом ядра).
-   * Доступные эндпоинты: `POST /api/v1/internal/tenants` (создание нового тенанта).
-2. **Контур Локального API (Уровень конкретного Тенанта):**
-   * Администратор тенанта генерирует ключи в интерфейсе личного кабинета.
-   * Тип: Opaque Tokens (Непрозрачные токены). Представляют собой криптографически стойкую строку случайных байт с префиксом (например, `nx_live_...`).
-   * Хранение: В базе данных ядра (таблица `tenant_api_keys`) сохраняется исключительно хэш токена по алгоритму SHA-256, дата создания, дата истечения (TTL) и массив разрешенных областей видимости (Scopes). Оригинальный токен показывается пользователю ровно один раз.
-   * Валидация: При входящем запросе бэкенд хэширует строку из заголовка `Authorization: Bearer <token>`, делает точечную выборку из БД, проверяет TTL и извлекает жестко привязанный `tenant_id`.
+#### Контур 1: Глобальный API (уровень платформы)
+
+* **Тип:** Асимметрично подписанные JWT (алгоритм EdDSA / RS256).
+* **Выдача:** супер-администратором в главной системной консоли.
+* **Валидация:** криптографическая, по публичному ключу. JWT **не хранится в БД** — ни в открытом виде, ни в виде хэша. Приватный ключ подписи живёт только в защищённом хранилище секретов.
+* **Что видит пользователь:** ничего «секретного» при создании не показывается — ключ подписи серверный, а не пользовательский. Токен имеет ограниченный TTL и scopes уровня платформы.
+* **Scopes:** `infrastructure:provisioning` (создание тенантов), `infrastructure:monitor` (глобальные метрики).
+
+#### Контур 2: Локальный API (уровень конкретного тенанта)
+
+* **Тип:** Opaque Tokens (непрозрачные строки) с префиксом (например, `nx_t1_live_7a8f9c…`).
+* **Выдача:** администратором тенанта в личном кабинете.
+* **Хранение:** в БД (`tenant_api_keys`) сохраняется **только SHA-256 хэш** токена, `tenant_id`, `scopes`, `expires_at`, `created_at`.
+* **Что видит пользователь:** оригинал токена показывается **ровно один раз** при создании; восстановление технически невозможно.
+* **Валидация:** при входящем запросе бэкенд хэширует `Authorization: Bearer <token>`, делает точечную выборку из БД, проверяет TTL, извлекает жёстко привязанный `tenant_id`.
+* **Scopes:** полный перечень — в [`RBAC.md`](RBAC.md).
+
+> **Ключевое различие.** JWT валидируется криптографически и не хранится; Opaque валидируется по хэшу в БД и хранится исключительно как хэш. «Показать секрет один раз» — свойство **только** локальных Opaque токенов.
 
 ### 2.2. Архитектура Глобального Эндпоинта Динамического Создания Тенантов
 
@@ -123,7 +160,7 @@
   3. Создание записи в таблице `tenants` с генерацией нового `tenant_id`.
   4. Инициализация системных настроек и дефолтных профилей маппинга для новой организации.
   5. Создание записи в таблице `users` для корневого администратора тенанта.
-  6. Генерация и возврат первичного административного API-токена уровня тенанта для дальнейшей автоматической синхронизации.
+  6. Генерация и возврат первичного локального API-токена уровня тенанта (Opaque) для дальнейшей автоматической синхронизации.
 
 ---
 
@@ -140,7 +177,8 @@
 #### Вариант А: TimescaleDB (Расширение PostgreSQL)
 
 * **Архитектура:** Таблица `xapi_statements` преобразуется в гипертаблицу (Hypertable), автоматически секционированную по времени (`timestamp`).
-* **Схема данных:** `tenant_id` (UUID), `statement_id` (UUID), `timestamp` (TIMESTAMPTZ), `stored_at` (TIMESTAMPTZ), `statement_json` (JSONB).
+* **Схема данных:** `tenant_id` (UUID), `statement_id` (UUID), `timestamp` (TIMESTAMPTZ), `stored_at` (TIMESTAMPTZ), `actor_anonymized` (BOOLEAN), `statement_json` (JSONB).
+* **Изоляция:** RLS уровня PostgreSQL (`app.current_tenant_id`).
 * **Оптимизация:** Активируется нативная сегментация и сжатие по колонкам (Compression Policy) для записей старше 7 дней. Переиспользуется существующий пул соединений ядра.
 
 #### Вариант Б: Выделенный кластер ClickHouse
@@ -148,7 +186,8 @@
 * **Архитектура:** Бэкенд на Rust использует асинхронный клиент (`clickhouse-rs`) для пакетной записи (Buffer Engine).
 * **Схема данных:** Таблица с движком `MergeTree` (без дедупликации — иммутабельный подход, см. [`OFFLINE_SYNC.md`](OFFLINE_SYNC.md) §5).
 * **Ключ сортировки (ORDER BY):** `(tenant_id, timestamp, course_id, user_id)`.
-* **Поля:** `tenant_id` (UUID), `statement_id` (UUID), `user_id` (UUID), `course_id` (UUID), `timestamp` (DateTime64), `stored_at` (DateTime64), `verb` (LowCardinality(String)), `payload` (String / JSON).
+* **Изоляция:** RLS уровня PostgreSQL **отсутствует**. Изоляция обеспечивается на архитектурном уровне (единственная точка доступа через `api`, обязательный фильтр `tenant_id`, ограниченные права пользователя ClickHouse, обязательные тесты изоляции). Детали — в [`DB_SCHEMA.md`](DB_SCHEMA.md) §2 Вариант Б.
+* **Поля:** `tenant_id` (UUID), `statement_id` (UUID), `user_id` (UUID), `course_id` (UUID), `timestamp` (DateTime64), `stored_at` (DateTime64), `verb` (LowCardinality(String)), `actor_anonymized` (UInt8), `payload` (String / JSON).
 
 ### 3.2. Базовая модель данных xAPI Statement (Спецификация JSON)
 
@@ -320,7 +359,7 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-    A["Внешний файл:<br/>CSV / XLSX / JSON"] --> B[Загрузка чанками<br/>Stream]
+    A["Внешний файл:<br/>CSV / JSONL / XML / XLSX"] --> B[Загрузка чанками<br/>Stream]
     B --> C[Валидация формата файла]
     C --> D[Конвейер Трансформации<br/>Mutation Pipeline]
     D --> E[ACID Транзакция<br/>Bulk Insert]
@@ -329,8 +368,19 @@ flowchart LR
 
 #### 1. Extract (Извлечение и Потоковое чтение)
 
-* API-сервер принимает файл (CSV, XLSX, JSON, XML) от администратора тенанта или через Open API, сохраняет его во временное защищенное DAM-хранилище (MinIO/S3) и генерирует задачу для воркера с указанием ссылки на файл и ID выбранного JSON-профиля маппинга (MappingProfile).
-* Воркер считывает файл потоково, чанками (пакетами по 500–1000 строк), используя асинхронные Rust-парсеры. Это предотвращает переполнение операционной памяти (OOM) даже при обработке файлов на сотни тысяч записей.
+API-сервер принимает файл (CSV, XLSX, JSON, XML) от администратора тенанта или через Open API, сохраняет его во временное защищенное DAM-хранилище (MinIO/S3) и генерирует задачу для воркера с указанием ссылки на файл и ID выбранного JSON-профиля маппинга (MappingProfile).
+
+Способ потокового чтения зависит от формата — не все форматы одинаково тривиальны:
+
+* **CSV / JSONL / XML** — построчный стриминг через `tokio::io::BufReader` (`read_line`). Память O(1) относительно размера файла.
+* **XLSX** — потоковый парсер уровня SAX (например, `calamine` в streaming-режиме). XLSX — это ZIP-контейнер с несколькими XML-файлами, включая shared strings table. Простое построчное чтение `BufReader` к нему **неприменимо**. Ограничения для XLSX задаются отдельно:
+  * максимальный размер файла — согласно [`NFR.md`](NFR.md);
+  * максимальное количество строк в листе — согласно [`NFR.md`](NFR.md);
+  * отдельный таймаут на обработку;
+  * при превышении лимитов задача отклоняется с явной ошибкой (`XLSX_TOO_LARGE` / `XLSX_TOO_MANY_ROWS`), а не падает по OOM.
+* **JSON (не JSONL)** — при больших файлах допускается потоковый парсер (например, `serde_json::StreamDeserializer`). Полная загрузка `serde_json::from_reader` в память запрещена для файлов выше лимита из [`NFR.md`](NFR.md).
+
+Во всех случаях воркер обрабатывает данные чанками (пакетами по 500–1000 строк), чтобы избежать переполнения операционной памяти.
 
 #### 2. Transform (Конвейер Мутации и Валидация данных)
 

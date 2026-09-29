@@ -26,14 +26,15 @@
 │   ├── STRUCTURE.md              # Настоящий файл: архитектурная карта папок
 │   ├── SPECIFICATION.md          # Бизнес-концепция и требования к платформе
 │   ├── ARCHITECTURE.md           # Сводный ADD: RLS, Open API, LRS, плагины, ETL
-│   ├── DB_SCHEMA.md              # Схемы PostgreSQL (RLS) и аналитического LRS
+│   ├── NFR.md                    # Нефункциональные требования: SLA, RTO/RPO, latency, лимиты
+│   ├── DB_SCHEMA.md              # Схемы PostgreSQL (RLS), версионирование, i18n, retention, LRS
 │   ├── MIGRATIONS.md             # Регламент миграций БД (sqlx / SeaORM)
-│   ├── OPEN_API.md               # Контракты REST/GraphQL, токены, вебхуки
-│   ├── OFFLINE_SYNC.md           # Спецификация Service Workers и IndexedDB для PWA
+│   ├── OPEN_API.md               # Контракты REST/GraphQL, SCIM 2.0, signed-url, токены, вебхуки
+│   ├── OFFLINE_SYNC.md           # Спецификация Service Workers и IndexedDB для PWA, iOS-лимиты
 │   ├── PLUGIN.md                 # Спецификация рантайма плагинов (WASM/iframe)
 │   ├── PLUGIN_DEVELOPMENT_TEMPLATE.md # ТЗ для разработчиков внешних плагинов
 │   ├── DEPLOY.md                 # Конфигурация Docker/Helm, CSP, Air-gapped деплой
-│   ├── STANDARDS.md              # SCORM, xAPI, LTI, WCAG 2.2 AA, GDPR/CCPA
+│   ├── STANDARDS.md              # SCORM, xAPI, LTI, SCIM 2.0, WCAG 2.2 AA, i18n, GDPR, retention
 │   ├── COMMUNICATIONS.md         # Чаты, комментарии, уведомления
 │   ├── CONFERENCING.md           # ВКС: WebRTC P2P/SFU, локальные TURN/STUN
 │   ├── ROADMAP.md                # Плановые направления (аналитика, биллинг, поиск, мобильное, аудит)
@@ -69,7 +70,7 @@
 
 Изолированная дизайн-система платформы. Содержит переиспользуемые Leptos-компоненты хоста (формы, списки, кнопки, диалоги, тостеры уведомлений Fluent-локализации), не привязанные к конкретным роутам страниц. Должна компилироваться в WASM-контур.
 
-Ответственность за соответствие WCAG 2.2 AA (см. [`STANDARDS.md`](STANDARDS.md) §«Доступность») лежит на этом крейте: семантика, ARIA, клавиатурный фокус, контрастность компонентов.
+Ответственность за соответствие WCAG 2.2 AA (см. [`STANDARDS.md`](STANDARDS.md) §«Доступность») лежит на этом крейте: семантика, ARIA, клавиатурный фокус, контрастность компонентов. Здесь же — поддержка RTL и локализация форматов (см. [`STANDARDS.md`](STANDARDS.md) §«Локализация»).
 
 ### 3.3. Крейт: `crates/api` (Business Logic & Data Layer)
 
@@ -78,6 +79,8 @@
 * `src/database/` — менеджер пула соединений SQLx и RLS-интерцептор (`set_config('app.current_tenant_id', $1, true)`, см. [`CODING_STANDARDS.md`](CODING_STANDARDS.md) §2.1).
 * `src/lrs/` — низкоуровневая обработка записей LRS (пакетный импорт в TimescaleDB или ClickHouse).
 * `src/etl/` — потоковые чанк-парсеры кастомного импорта пользователей (Custom ETL Mapper).
+* `src/scim/` — маппинг SCIM 2.0 (RFC 7643 / 7644) на внутренние сущности `users` / `batches` (см. [`OPEN_API.md`](OPEN_API.md) §3.5).
+* `src/content/` — выдача подписанных URL для медиа, валидация прав доступа (см. [`OPEN_API.md`](OPEN_API.md) §3.6).
 
 Миграции БД лежат в корневом каталоге `migrations/` (см. [`MIGRATIONS.md`](MIGRATIONS.md)) и не являются модулем внутри `api`.
 
@@ -89,6 +92,7 @@
 * `src/website/` — публичные посадочные страницы, форма входа, публичный реестр верификации сертификатов.
 * `src/student/` — личный кабинет учащегося, плеер прохождения юнитов курса, IndexedDB автономная очередь и рантайм Plugin SDK (потребительская сторона).
 * `src/cpanel/` — Панель Управления (Control Panel) для Администраторов, Инструкторов и Менторов. Полностью компилируется в Lazy-Loaded WASM-модуль (ленивая загрузка, не раздувает бандл студента). Содержит административную сторону рантайма Plugin SDK (превью плагинов, валидация манифестов).
+* `src/i18n/` — Fluent-локализация, переключение локали, RTL-логика (см. [`STANDARDS.md`](STANDARDS.md) §«Локализация»).
 * `src/server.rs` — объявления `#[server]` RPC-функций приложения, транзакционно вызывающих методы `crates/api` на стороне сервера.
 
 ### 3.5. Крейт: `crates/server` (Axum Runtime Host)
@@ -98,6 +102,7 @@
 * Считывает инфраструктурную конфигурацию `config.toml`.
 * Инициализирует пулы подключений `SQLx` к PostgreSQL и ClickHouse/TimescaleDB.
 * Монтирует Axum-роутер, связывает его с `#[server]` RPC-эндпоинтами крейта `client`, регистрирует REST-эндпоинты Open API ([`OPEN_API.md`](OPEN_API.md)) и запускает Tokio рантайм.
+* Запускает cron-воркеры retention-политик (см. [`STANDARDS.md`](STANDARDS.md) §«Политики удержания данных») и воркеры вебхуков.
 
 ## 4. Направленность зависимостей и правила изоляции (Dependency Rules)
 
