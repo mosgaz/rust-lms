@@ -1,0 +1,21 @@
+[package]
+name = "ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Библиотека переиспользуемых Leptos-компонентов, лейаутов и хуков дизайн-системы"
+
+[dependencies]
+leptos = { workspace = true }
+leptos_router = { workspace = true }
+wasm-bindgen = { workspace = true }
+web-sys = { workspace = true }
+gloo = { workspace = true }
+serde = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
