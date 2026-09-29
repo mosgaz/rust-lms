@@ -1,0 +1,68 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/shared",
+    "crates/ui",
+    "crates/icons",
+    "crates/client",
+    "crates/api",
+    "crates/server",
+    "crates/cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "Proprietary"
+repository = "https://github.com/mosgaz/rust-lms"
+authors = ["rust-lms contributors"]
+
+[workspace.dependencies]
+# --- Сериализация / контракты ---
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_wasm_bindgen = "0.6"
+
+# --- Асинхронный рантайм / сеть ---
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
+hyper = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# --- БД ---
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "macros", "migrate"] }
+sea-orm = { version = "1", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
+
+# --- Фронтенд ---
+leptos = { version = "0.7", features = ["csr", "ssr"] }
+leptos_router = { version = "0.7" }
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3" }
+gloo = "0.11"
+
+# --- Идентификаторы / время ---
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", features = ["serde", "formatting"] }
+
+# --- Ошибки / логирование ---
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# --- Криптография (Ed25519, лицензии, подписи плагинов) ---
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+sha2 = "0.10"
+hmac = "0.12"
+base64 = "0.22"
+
+# --- CLI ---
+clap = { version = "4", features = ["derive", "env"] }
+dialoguer = "0.11"
+
+# --- Дизайн-система ---
+tailwindcss = "0.1"

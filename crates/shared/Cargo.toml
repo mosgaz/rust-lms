@@ -1,0 +1,21 @@
+[package]
+name = "shared"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Плоские DTO, сущности, контракты обмена и xAPI JSON-LD структуры"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+serde-wasm-bindgen = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
