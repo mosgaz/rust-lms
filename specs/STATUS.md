@@ -6,26 +6,29 @@
 **Кодовая база:** начальная стадия.
 
 ## Легенда статусов
+
 *   🔴 **НЕ СДЕЛАНО** — функционал отсутствует, контракты не объявлены.
 *   🟡 **ЗАГЛУШКА** — объявлены интерфейсы/типы, но методы возвращают дефолтные mock-данные.
 *   🟢 **ГОТОВО** — бизнес-логика написана, покрыта тестами ≥80%, RLS-проверки активны.
 *   ⚪ **ПЛАН** — зафиксировано в спецификации, реализация не начата и не декомпозирована на таски.
 
 ## Крейты Cargo Workspace
-Актуальный состав воркспейса (см. `specs/STRUCTURE.md`):
+
+Актуальный состав воркспейса (см. [`specs/STRUCTURE.md`](STRUCTURE.md)):
 
 | Крейт | Назначение |
 |:---|:---|
 | `shared` | Плоские DTO, сущности, контракты обмена, xAPI JSON-LD. |
-| `ui` | Атомарные компоненты, дизайн-система, Tailwind, a11y, Fluent-локализация. |
-| `api` | Бизнес-логика, PostgreSQL + RLS, LRS-аналитика. |
+| `ui` | Атомарные компоненты, дизайн-система, Tailwind, a11y (WCAG 2.2 AA), Fluent-локализация. |
+| `api` | Бизнес-логика, PostgreSQL + RLS, LRS-аналитика, Calculations Engine. |
 | `client` | Leptos-приложение: `website`, `student`, `cpanel`. |
 | `server` | Точка входа Axum, пулы СУБД, раздача WASM, планировщики Tokio. |
 
 ## Типы строк
+
 *   **Проектирование** — спецификация / регламент / контракт.
 *   **Реализация** — код в соответствующем крейте.
-*   **План** — направление из `specs/ROADMAP.md`.
+*   **План** — направление из [`specs/ROADMAP.md`](ROADMAP.md).
 
 ---
 
@@ -33,23 +36,31 @@
 
 | Артефакт | Статус | Ответственный | Примечания |
 |:---|:---:|:---|:---|
-| `specs/SPECIFICATION.md` | 🟢 | — | Бизнес-концепция, иерархия программ. |
-| `specs/STRUCTURE.md` | 🟢 | — | Карта папок, Dependency Rules, состав крейтов. |
-| `specs/DB_SCHEMA.md` | 🟢 | — | Таблицы, триггеры, RLS, LRS. |
-| `specs/MIGRATIONS.md` | 🟢 | — | Регламент на базе `sqlx` (см. файл). |
-| `specs/OPEN_API.md` | 🟢 | — | REST/GraphQL, Opaque-токены, вебхуки. |
-| `specs/OFFLINE_SYNC.md` | 🟢 | — | IndexedDB, пакетная синхронизация. |
-| `specs/PLUGIN.md` | 🟢 | — | Двухуровневый рантайм, FSM. |
-| `specs/PLUGIN_DEVELOPMENT_TEMPLATE.md` | 🟢 | — | Шаблон ТЗ для внешних команд. |
-| `specs/DEPLOY.md` | 🟢 | — | Docker Compose, Ingress, CSP, Air-gapped. |
-| `specs/RBAC.md` | 🟢 | — | Матрица ролей и доступов. |
-| `specs/DIAGNOSTICS.md` | 🟢 | — | Сквозное `tracing`. |
-| `specs/GOTCHAS.md` | 🟢 | — | Журнал технических ловушек. |
-| `specs/STANDARDS.md` | 🟢 | — | SCORM, xAPI, LTI, WCAG 2.2 AA, GDPR/CCPA. |
-| `specs/COMMUNICATIONS.md` | 🟢 | — | Чаты, комментарии, уведомления. |
-| `specs/CONFERENCING.md` | 🟢 | — | WebRTC P2P/SFU, локальные TURN/STUN. |
-| `specs/ROADMAP.md` | 🟢 | — | Планы по аналитике, сертификации, биллингу, поиску, мобильному, аудиту. |
-| `CONTRIBUTING.md` | 🟢 | — | Коммиты, ветвление. |
+| [`specs/README.md`](README.md) | 🟢 | — | Разводящая страница документации. |
+| [`specs/SPECIFICATION.md`](SPECIFICATION.md) | 🟢 | — | Бизнес-концепция, иерархия программ, роли. |
+| [`specs/ARCHITECTURE.md`](ARCHITECTURE.md) | 🟢 | — | Сводный ADD: RLS, Open API, LRS, плагины, ETL. |
+| [`specs/STRUCTURE.md`](STRUCTURE.md) | 🟢 | — | Карта папок, Dependency Rules, состав крейтов. |
+| [`specs/DB_SCHEMA.md`](DB_SCHEMA.md) | 🟢 | — | Таблицы, триггеры, RLS, LRS. |
+| [`specs/MIGRATIONS.md`](MIGRATIONS.md) | 🟢 | — | Регламент на базе `sqlx` (альтернатива — `SeaORM`). |
+| [`specs/OPEN_API.md`](OPEN_API.md) | 🟢 | — | REST/GraphQL, Opaque-токены, вебхуки. |
+| [`specs/OFFLINE_SYNC.md`](OFFLINE_SYNC.md) | 🟢 | — | IndexedDB, пакетная синхронизация, конфликты. |
+| [`specs/PLUGIN.md`](PLUGIN.md) | 🟢 | — | Двухуровневый рантайм, FSM. |
+| [`specs/PLUGIN_DEVELOPMENT_TEMPLATE.md`](PLUGIN_DEVELOPMENT_TEMPLATE.md) | 🟢 | — | Шаблон ТЗ для внешних команд. |
+| [`specs/DEPLOY.md`](DEPLOY.md) | 🟢 | — | Docker Compose, Ingress, CSP, Air-gapped. |
+| [`specs/STANDARDS.md`](STANDARDS.md) | 🟢 | — | SCORM, xAPI, LTI, WCAG 2.2 AA, GDPR/CCPA. |
+| [`specs/COMMUNICATIONS.md`](COMMUNICATIONS.md) | 🟢 | — | Чаты, комментарии, уведомления. |
+| [`specs/CONFERENCING.md`](CONFERENCING.md) | 🟢 | — | WebRTC P2P/SFU, локальные TURN/STUN. |
+| [`specs/ROADMAP.md`](ROADMAP.md) | 🟢 | — | Планы по аналитике, сертификации, биллингу, поиску, мобильному, аудиту. |
+| [`specs/RBAC.md`](RBAC.md) | 🟢 | — | Матрица ролей и доступов. |
+| [`specs/DIAGNOSTICS.md`](DIAGNOSTICS.md) | 🟢 | — | Сквозное `tracing`. |
+| [`specs/GOTCHAS.md`](GOTCHAS.md) | 🟢 | — | Журнал технических ловушек. |
+| [`specs/CODING_STANDARDS.md`](CODING_STANDARDS.md) | 🟢 | — | Правила full-stack Rust, RLS, запреты. |
+| [`specs/AGENTS.md`](AGENTS.md) | 🟢 | — | Инструкции для AI-агентов. |
+| [`specs/decisions/README.md`](decisions/README.md) | 🟢 | — | Реестр ADR, точка входа. |
+| [`specs/decisions/2026.09.28-0001.md`](decisions/2026.09.28-0001.md) | 🟢 | — | ADR: RLS вместо схем-per-tenant. |
+| [`specs/decisions/2026.09.28-0002.md`](decisions/2026.09.28-0002.md) | 🟢 | — | ADR: иммутабельный xAPI в LRS. |
+| [`CONTRIBUTING.md`](../CONTRIBUTING.md) | 🟢 | — | Коммиты, ветвление, Conventional Commits. |
+| [`CHANGELOG.md`](../CHANGELOG.md) | 🟢 | — | Журнал изменений. |
 
 ---
 
@@ -57,40 +68,40 @@
 
 | Компонент / Фича | Тип | Статус | Крейт-ответственный | Примечания / Ссылка на ADR |
 |:---|:---:|:---:|:---|:---|
-| **Мультиарендность (Strict Multi-tenancy)** | Реализация | 🔴 | `api` | Ожидает реализации RLS-интерцептора сессий. |
-| **Динамический Provisioning тенантов** | Реализация | 🔴 | `api` | Эндпоинт создания структуры организации. |
+| **Мультиарендность (Strict Multi-tenancy)** | Реализация | 🔴 | `api` | Ожидает реализации RLS-интерцептора сессий. ADR: [`2026.09.28-0001.md`](decisions/2026.09.28-0001.md). |
+| **Динамический Provisioning тенантов** | Реализация | 🔴 | `api` | Эндпоинт `POST /api/v1/internal/tenants`. |
 | **Слой открытых токенов и API Keys** | Реализация | 🔴 | `api` | SHA-256 хэширование Opaque-ключей в БД. |
 | **Конвейер кастомного импорта (ETL)** | Реализация | 🔴 | `api` | Потоковый парсинг CSV/XLSX чанками. |
 | **Иерархия (Programs / Courses / Batches)** | Реализация | 🔴 | `shared` | Объявление плоских DTO-контрактов. |
-| **Движок LRS (Аналитика xAPI)** | Реализация | 🔴 | `api` | Инвариантный слой TimescaleDB/ClickHouse. |
-| **Offline-First PWA (IndexedDB Queue)** | Реализация | 🔴 | `client` | Сервис-воркер и транзакционный буфер. |
+| **Движок LRS (Аналитика xAPI)** | Реализация | 🔴 | `api` | Инвариантный слой TimescaleDB/ClickHouse. ADR: [`2026.09.28-0002.md`](decisions/2026.09.28-0002.md). |
+| **Offline-First PWA (IndexedDB Queue)** | Реализация | 🔴 | `client` | Сервис-воркер и транзакционный буфер. ADR: [`2026.09.28-0002.md`](decisions/2026.09.28-0002.md). |
 | **Рантайм плагинов Контур А (iframe)** | Реализация | 🔴 | `server` | Мост postMessage и CSP-изоляция шлюза. |
 | **Рантайм плагинов Контур Б (WASM)** | Реализация | 🔴 | `server` | Zero-copy shared memory биндинги. |
-| **Автоматическая сертификация** | Реализация | 🔴 | `server` | Фоновые воркеры калькуляции прогресса (Tokio). |
-| **Импорт SCORM 1.2 / 2004** | Реализация | 🔴 | `api` | Требования — в `specs/STANDARDS.md`. |
-| **LTI 1.3 (Consumer + Provider)** | Реализация | 🔴 | `api` | Требования — в `specs/STANDARDS.md`. |
-| **Доступность WCAG 2.2 AA** | Реализация | 🔴 | `ui` | Требования — в `specs/STANDARDS.md`; axe-core в CI. |
-| **Чаты (личные / групповые / курс / задание)** | Реализация | 🔴 | `api` | Требования — в `specs/COMMUNICATIONS.md`. |
-| **Комментарии к контенту (ветки)** | Реализация | 🔴 | `api` | Требования — в `specs/COMMUNICATIONS.md`. |
-| **Уведомления (in-app / Email / Telegram / Webhook / Push)** | Реализация | 🔴 | `server` | Требования — в `specs/COMMUNICATIONS.md`. |
-| **ВКС: P2P (Mesh) для 1-to-1** | Реализация | 🔴 | `client` | Требования — в `specs/CONFERENCING.md`. |
-| **ВКС: SFU (Mediasoup/Janus) для групп** | Реализация | 🔴 | `api` | Требования — в `specs/CONFERENCING.md`. |
-| **ВКС: Whiteboard, шеринг, опросы** | Реализация | 🔴 | `ui` | Требования — в `specs/CONFERENCING.md`. |
-| **ВКС: локальные TURN/STUN (Air-gapped)** | Реализация | 🔴 | `server` | Требования — в `specs/CONFERENCING.md` и `specs/DEPLOY.md`. |
+| **Автоматическая сертификация** | Реализация | 🔴 | `server` | Фоновые воркеры калькуляции прогресса (Tokio); Calculations Engine — часть `api`. |
+| **Импорт SCORM 1.2 / 2004** | Реализация | 🔴 | `api` | Требования — в [`specs/STANDARDS.md`](STANDARDS.md). |
+| **LTI 1.3 (Consumer + Provider)** | Реализация | 🔴 | `api` | Требования — в [`specs/STANDARDS.md`](STANDARDS.md). |
+| **Доступность WCAG 2.2 AA** | Реализация | 🔴 | `ui` | Требования — в [`specs/STANDARDS.md`](STANDARDS.md); axe-core в CI. |
+| **Чаты (личные / групповые / курс / задание)** | Реализация | 🔴 | `api` | Требования — в [`specs/COMMUNICATIONS.md`](COMMUNICATIONS.md). |
+| **Комментарии к контенту (ветки)** | Реализация | 🔴 | `api` | Требования — в [`specs/COMMUNICATIONS.md`](COMMUNICATIONS.md). |
+| **Уведомления (in-app / Email / Telegram / Webhook / Push)** | Реализация | 🔴 | `server` | Требования — в [`specs/COMMUNICATIONS.md`](COMMUNICATIONS.md). |
+| **ВКС: P2P (Mesh) для 1-to-1** | Реализация | 🔴 | `client` | Требования — в [`specs/CONFERENCING.md`](CONFERENCING.md). |
+| **ВКС: SFU (Mediasoup/Janus) для групп** | Реализация | 🔴 | `api` | Требования — в [`specs/CONFERENCING.md`](CONFERENCING.md). |
+| **ВКС: Whiteboard, шеринг, опросы** | Реализация | 🔴 | `ui` | Требования — в [`specs/CONFERENCING.md`](CONFERENCING.md). |
+| **ВКС: локальные TURN/STUN (Air-gapped)** | Реализация | 🔴 | `server` | Требования — в [`specs/CONFERENCING.md`](CONFERENCING.md) и [`specs/DEPLOY.md`](DEPLOY.md). |
 
 ---
 
 ## 🗺️ Плановые направления (без декомпозиции на таски)
 
-Все направления зафиксированы в `specs/ROADMAP.md`. Статус ⚪ — реализация не начата и не декомпозирована.
+Все направления зафиксированы в [`specs/ROADMAP.md`](ROADMAP.md). Статус ⚪ — реализация не начата и не декомпозирована.
 
 | Направление | Статус | Примечания |
 |:---|:---:|:---|
 | Аналитика обучения (дашборды, отчёты, алерты) | ⚪ | Сбор данных покрыт LRS; слой осмысления — в плане. |
-| Сертификация и валидация (Open Badges / Blockcerts) | ⚪ | Выдача и верификация сертификатов. |
+| Сертификация и валидация (Open Badges / Blockcerts) | ⚪ | Выдача и верификация сертификатов; см. [`SPECIFICATION.md`](SPECIFICATION.md) §4. |
 | Платежи и биллинг (подписки, счета, налоги) | ⚪ | Интеграция с провайдерами. |
 | Поиск (Elasticsearch/Meilisearch) | ⚪ | Полнотекстовый поиск по контенту. |
 | Рекомендации курсов и материалов | ⚪ | На основе истории и профиля. |
 | Вебинары с записью | ⚪ | Поверх встроенной ВКС. |
 | Мобильное приложение (нативное) | ⚪ | Технологии будут определены позже. |
-| Аудит и compliance (SIEM, retention) | ⚪ | Расширение `specs/STANDARDS.md`. |
+| Аудит и compliance (SIEM, retention) | ⚪ | Расширение [`specs/STANDARDS.md`](STANDARDS.md). |
