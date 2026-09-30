@@ -1,0 +1,6 @@
+[alias]
+# cargo showcase			# Запуск витрины из корня workspace
+client = "leptos watch '-- --package rust-lms-client --project crates/client"
+
+# [build]
+# rustflags = ["--cfg", "erase_components"]

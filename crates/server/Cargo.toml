@@ -1,5 +1,5 @@
 [package]
-name = "server"
+name = "rust-lms-server"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,9 +13,9 @@ name = "rust-lms-server"
 path = "src/main.rs"
 
 [dependencies]
-api = { path = "../api" }
-client = { path = "../client" }
-shared = { path = "../shared" }
+rust-lms-api = { path = "../api" }
+rust-lms-client = { path = "../client" }
+rust-lms-shared = { path = "../shared" }
 
 axum = { workspace = true }
 tower = { workspace = true }

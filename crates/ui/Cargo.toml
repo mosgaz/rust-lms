@@ -1,5 +1,5 @@
 [package]
-name = "ui"
+name = "rust-lms-ui"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,11 +11,19 @@ description = "Библиотека переиспользуемых Leptos-ко
 [dependencies]
 leptos = { workspace = true }
 leptos_router = { workspace = true }
-wasm-bindgen = { workspace = true }
-web-sys = { workspace = true }
-gloo = { workspace = true }
-serde = { workspace = true }
-uuid = { workspace = true }
+# Важнейшая зависимость для макроса clx! и работы со строками классов
+tw_merge = { workspace = true }
+# Необходим макросу variants! для склеивания идентификаторов (например, [<$name Variants>])
+paste = "1.0"
+# Подключаем наш соседний изолированный крейт иконок из Workspace
+rust-lms-icons = { path = "../icons" }
+# TODO: rust-kit-icons
+# icons = { version = "0.18.3", features = ["leptos"] }
+# wasm-bindgen = { workspace = true }
+# web-sys = { workspace = true }
+# gloo = { workspace = true }
+# serde = { workspace = true }
+# uuid = { workspace = true }
 
-[dev-dependencies]
-wasm-bindgen-test = "0.3"
+# [dev-dependencies]
+# wasm-bindgen-test = "0.3"

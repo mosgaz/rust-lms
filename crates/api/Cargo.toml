@@ -1,5 +1,5 @@
 [package]
-name = "api"
+name = "rust-lms-api"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,7 +9,7 @@ authors.workspace = true
 description = "Серверное ядро бизнес-логики: PostgreSQL + RLS, LRS, SCIM, ETL, license, features, SBOM"
 
 [dependencies]
-shared = { path = "../shared" }
+rust-lms-shared = { path = "../shared" }
 
 sqlx = { workspace = true }
 sea-orm = { workspace = true }

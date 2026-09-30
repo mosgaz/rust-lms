@@ -1,5 +1,5 @@
 [package]
-name = "client"
+name = "rust-lms-client"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,15 +9,41 @@ authors.workspace = true
 description = "Изоморфное full-stack Leptos-приложение: website, student, cpanel, PWA"
 
 [lib]
+name = "rust_lms_client"
+path = "src/lib.rs"
+test = true
 crate-type = ["cdylib", "rlib"]
 
-[dependencies]
-shared = { path = "../shared" }
-ui = { path = "../ui" }
-icons = { path = "../icons" }
+[features]
+hydrate = ["leptos/hydrate"]
+ssr = [
+    "leptos/ssr",
+    "leptos_router/ssr",
+    "leptos_meta/ssr",
+    "dep:leptos_axum",
+    "dep:axum",
+    "dep:tokio",
+]
 
+[dependencies]
+# 1. Обновленные имена локальных зависимостей
+rust-lms-shared = { path = "../shared" }
+rust-lms-ui = { path = "../ui" }
+rust-lms-icons = { path = "../icons" }
+
+# 2. Workspace зависимости (версии управляются из корня)
 leptos = { workspace = true }
 leptos_router = { workspace = true }
+leptos_meta = { workspace = true }
+leptos_axum = { workspace = true, optional = true }
+
+# tw_merge = { workspace = true }
+tw_merge = { version = "0.1.21", features = ["variant"] }
+
+axum = { workspace = true, optional = true }
+# Переопределяем фичи tokio только для SSR, чтобы не тащить лишнее в WASM
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"], optional = true }
+
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
@@ -30,6 +56,27 @@ wasm-bindgen = { workspace = true }
 web-sys = { workspace = true }
 gloo = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
+# Рекомендуется для красивых ошибок в консоли браузера
+console_error_panic_hook = "0.1"
 
-[dev-dependencies]
-wasm-bindgen-test = "0.3"
+# Подключаем tower-http строго для НЕ-WASM таргетов (фича "fs" уже есть в корне)
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tower-http = { workspace = true }
+
+# [dev-dependencies]
+# wasm-bindgen-test = { workspace = true }
+
+[package.metadata.leptos]
+# 3. Имена приведены в соответствие с именем пакета
+output-name = "rust-lms-client"
+site-name = "rust-lms"
+site-root = "target/site"
+site-pkg-dir = "pkg"
+bin-target = "rust-lms-client"
+lib-target = "rust-lms-client"
+lib-features = ["hydrate"]
+bin-features = ["ssr"]
+tailwind-input-file = "assets/styles/tailwind.css"
+assets-dir = "public"
+site-addr = "127.0.0.1:3726"
+reload-port = 3727

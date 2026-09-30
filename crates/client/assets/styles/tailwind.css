@@ -1,6 +1,11 @@
-/// Статический шаблон `tailwind.css`. Не зависит от base/accent.
-pub const TAILWIND_CSS: &str = r#"@import "tailwindcss";
-@import "tw-animate-css";
+/* 1. Говорим Tailwind сканировать код витрины на наличие классов */
+@source "../../src/**/*.rs"; 
+
+/* 2. Говорим Tailwind зайти в соседнюю папку крейта UI и вытащить классы оттуда */
+@source "../../crates/ui/src/**/*.rs"; 
+
+@import "tailwindcss";
+/** @import "tw-animate-css"; */
 @import "./colors.css";
 
 @theme inline {
@@ -45,4 +50,3 @@ pub const TAILWIND_CSS: &str = r#"@import "tailwindcss";
     margin: auto;
   }
 }
-"#;

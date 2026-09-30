@@ -4,7 +4,7 @@ use std::path::Path;
 use crate::error::CliResult;
 use crate::prompts;
 use crate::templates;
-use crate::theme::colors::{generate_theme_vars, AccentColor, BaseColor};
+use crate::theme::colors::{AccentColor, BaseColor, generate_theme_vars};
 
 const TAILWIND_PATH: &str = "assets/styles/tailwind.css";
 const COLORS_PATH: &str = "assets/styles/colors.css";
@@ -25,7 +25,10 @@ pub fn run_in(base_dir: &Path, opts: InitOptions) -> CliResult<()> {
     let (base, accent) = if opts.yes || opts.force {
         (BaseColor::default(), AccentColor::default())
     } else {
-        (prompts::prompt_base_color()?, prompts::prompt_accent_color()?)
+        (
+            prompts::prompt_base_color()?,
+            prompts::prompt_accent_color()?,
+        )
     };
 
     let tailwind = base_dir.join(TAILWIND_PATH);
@@ -76,11 +79,17 @@ mod tests {
     use tempfile::TempDir;
 
     fn opts_yes() -> InitOptions {
-        InitOptions { yes: true, force: false }
+        InitOptions {
+            yes: true,
+            force: false,
+        }
     }
 
     fn opts_force() -> InitOptions {
-        InitOptions { yes: false, force: true }
+        InitOptions {
+            yes: false,
+            force: true,
+        }
     }
 
     #[test]

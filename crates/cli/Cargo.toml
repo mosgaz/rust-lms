@@ -1,5 +1,5 @@
 [package]
-name = "cli"
+name = "rust-lms-cli"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,7 +9,7 @@ authors.workspace = true
 description = "CLI-утилита проекта: license, features, conformance"
 
 [[bin]]
-name = "rust-lms"
+name = "lms"
 path = "src/main.rs"
 
 [dependencies]
