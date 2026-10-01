@@ -1,3 +1,4 @@
+// crates/client/src/main.rs
 #[cfg(feature = "ssr")]
 use leptos::config::get_configuration;
 #[cfg(feature = "ssr")]

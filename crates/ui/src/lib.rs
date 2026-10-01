@@ -35,8 +35,10 @@ pub use components::accordion::{
     Accordion, AccordionContent, AccordionDescription, AccordionItem, AccordionTitle,
     AccordionTrigger,
 };
-pub use components::badge::Badge;
-pub use components::button::Button;
+pub use components::avatar::*;
+pub use components::badge::*;
+// pub use components::button::Button;
+pub use components::button::*;
 
 pub use utils::Utils;
 
@@ -50,8 +52,9 @@ pub mod prelude {
         Accordion, AccordionContent, AccordionDescription, AccordionItem, AccordionTitle,
         AccordionTrigger,
     };
-    pub use crate::components::badge::Badge;
-    pub use crate::components::button::Button;
+    pub use crate::components::avatar::*;
+    pub use crate::components::badge::*;
+    pub use crate::components::button::*;
     pub use crate::layouts::*;
     pub use crate::utils::Utils;
 }

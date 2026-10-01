@@ -1,7 +1,5 @@
 use crate::icons::ChevronDown;
-// use rust_kit_icons::ChevronDown;
 use leptos::prelude::*;
-// use leptos_ui::clx;
 use crate::clx;
 use tw_merge::*;
 
