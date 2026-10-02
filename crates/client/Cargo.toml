@@ -51,10 +51,20 @@ chrono = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }
-web-sys = { workspace = true }
-gloo = { workspace = true }
+web-sys = { workspace = true, features = [
+    "Window",
+    "Storage",
+    "Navigator",
+    "ServiceWorker",
+    "ServiceWorkerContainer",
+    "ServiceWorkerRegistration",
+    "MessageEvent",
+    "Event",
+    "EventTarget",
+] }
+wasm-bindgen-futures = "0.4"
+gloo = { workspace = true, features = ["futures"] }
 serde-wasm-bindgen = { workspace = true }
 # Рекомендуется для красивых ошибок в консоли браузера
 console_error_panic_hook = "0.1"
@@ -67,7 +77,6 @@ tower-http = { workspace = true }
 # wasm-bindgen-test = { workspace = true }
 
 [package.metadata.leptos]
-# 3. Имена приведены в соответствие с именем пакета
 output-name = "rust-lms-client"
 site-name = "rust-lms"
 site-root = "target/site"

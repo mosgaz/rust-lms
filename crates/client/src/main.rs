@@ -46,18 +46,76 @@ fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
         <!DOCTYPE html>
         <html lang="ru">
-            <head>
-                <meta charset="utf-8"/>
-                <meta name="viewport" content="width=device-width, initial-scale=1"/>
-                <MetaTags/>
+            
+			<head>
+                
+				<meta charset="utf-8"/>
+                <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+                
+				<MetaTags/>
                 <Stylesheet id="leptos" href="/pkg/rust-lms-client.css"/>
+				
+				// Favicon
+				<link rel="icon" type="image/svg+xml" href="/images/icons/favicon.svg?v=20261002" />
+				<link rel="icon" type="image/png" sizes="96x96" href="/images/icons/icon-96x96.png?v=20261002" />
+				<link rel="shortcut icon" href="/favicon.ico?v=20261002" />
+
+				// PWA
+				<link rel="manifest" href="/manifest.json" />
+				<meta name="theme-color" content="#000000" />
+                
+				// Apple
+				<meta name="mobile-web-app-capable" content="yes" />
+				<meta name="apple-mobile-web-app-capable" content="yes" />
+				// <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+				<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+				<meta name="apple-mobile-web-app-title" content="Rust LMS" />
+				<link rel="apple-touch-icon" sizes="180x180" href="/images/icons/icon-180x180.png" />
+
+				// iOS Splash Screens (portrait)
+				<link rel="apple-touch-startup-image" href="/splash/splash-2048x2732.png" media="screen and (device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+				<link rel="apple-touch-startup-image" href="/splash/splash-1668x2224.png" media="screen and (device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+				<link rel="apple-touch-startup-image" href="/splash/splash-1536x2048.png" media="screen and (device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+				<link rel="apple-touch-startup-image" href="/splash/splash-1280x1920.png" media="screen and (device-width: 640px) and (device-height: 960px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+				<link rel="apple-touch-startup-image" href="/splash/splash-1242x2208.png" media="screen and (device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+				<link rel="apple-touch-startup-image" href="/splash/splash-1125x2436.png" media="screen and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+				<link rel="apple-touch-startup-image" href="/splash/splash-960x1280.png" media="screen and (device-width: 480px) and (device-height: 640px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+				<link rel="apple-touch-startup-image" href="/splash/splash-750x1334.png" media="screen and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+				<link rel="apple-touch-startup-image" href="/splash/splash-720x960.png" media="screen and (device-width: 360px) and (device-height: 480px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+				<link rel="apple-touch-startup-image" href="/splash/splash-480x640.png" media="screen and (device-width: 320px) and (device-height: 480px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+				<link rel="apple-touch-startup-image" href="/splash/splash-320x470.png" media="screen and (device-width: 320px) and (device-height: 470px) and (-webkit-device-pixel-ratio: 1) and (orientation: portrait)" />
+				<link rel="apple-touch-startup-image" href="/splash/splash-320x426.png" media="screen and (device-width: 320px) and (device-height: 426px) and (-webkit-device-pixel-ratio: 1) and (orientation: portrait)" />
+
+				// iOS Splash Screens (portrait / dark theme)
+				// <link rel="apple-touch-startup-image" href="/splash/dark/splash-1125x2436.png" media="screen and (prefers-color-scheme: dark) and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+				
+				// iOS Splash Screens (landscape)
+				// <link rel="apple-touch-startup-image" href="/splash/splash-2732x2048.png" media="screen and (device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+
                 <AutoReload options=options.clone() />
                 <HydrationScripts options=options.clone()/>
-            </head>
-            <body>
-                <App/>
-            </body>
-        </html>
+            
+			</head>
+            
+			<body>
+                
+				<App/>
+				
+				// Скрипт регистрации Service Worker (выполняется только в браузере)
+                // Передаем JS-код как сырую строку вовнутрь тега script, чтобы Rust его не компилировал
+                <script>
+                    "if ('serviceWorker' in navigator) {
+                        window.addEventListener('load', () => {
+                            navigator.serviceWorker.register('/sw.js')
+                                .then(reg => console.log('[PWA] Service Worker registered:', reg.scope))
+                                .catch(err => console.error('[PWA] Service Worker registration failed:', err));
+                        });
+                    }"
+                </script>
+            
+			</body>
+        
+		</html>
     }
 }
 
