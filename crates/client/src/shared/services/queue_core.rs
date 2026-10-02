@@ -1,8 +1,8 @@
-// crates/client/src/shared/services/queue_core.rs
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
+use crate::shared::storage::{get_storage, XapiStatement};
 
 #[derive(Debug, Clone)]
 pub struct QueueConfig {
@@ -30,18 +30,17 @@ pub enum QueuePriority {
 }
 
 #[derive(Clone)]
-pub struct QueueCore<T: Clone + Serialize + for<'de> Deserialize<'de>> {
-    queue: Rc<RefCell<VecDeque<QueueAction<T>>>>,
+pub struct QueueCore<T: Clone + Serialize + for<'de> Deserialize<'de> + 'static> {
+    pub(crate) queue: Rc<RefCell<VecDeque<QueueAction<T>>>>,
     config: QueueConfig,
 }
 
-impl<T: Clone + Serialize + for<'de> Deserialize<'de>> QueueCore<T> {
+impl<T: Clone + Serialize + for<'de> Deserialize<'de> + std::fmt::Debug + 'static> QueueCore<T> {
     pub fn new(config: QueueConfig) -> Self {
         let core = Self {
             queue: Rc::new(RefCell::new(VecDeque::new())),
             config,
         };
-        // Загружаем из хранилища ТОЛЬКО в браузере
         #[cfg(target_arch = "wasm32")]
         core.load_from_storage();
         core
@@ -94,34 +93,41 @@ impl<T: Clone + Serialize + for<'de> Deserialize<'de>> QueueCore<T> {
         *queue = items.into();
     }
 
-    // --- WASM-специфичные методы ---
-    #[cfg(target_arch = "wasm32")]
+        #[cfg(target_arch = "wasm32")]
     fn persist_to_storage(&self) {
-        use wasm_bindgen::JsValue;
-        use web_sys::window;
+        // 1. Клонируем данные СРАЗУ, чтобы они не зависели от времени жизни `self`
         let queue_data: Vec<_> = self.queue.borrow().iter().cloned().collect();
-        if let Ok(json) = serde_json::to_string(&queue_data) {
-            if let Some(window) = window() {
-                if let Ok(Some(storage)) = window.local_storage() {
-                    let _ = storage.set_item(&self.config.storage_key, &json);
+        let queue_name = self.config.queue_name.clone(); 
+        
+        // 2. Теперь async move блок полностью автономен и не захватывает `self`
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(storage) = get_storage().await {
+                for action in queue_data {
+                    let statement = XapiStatement {
+                        statement_id: action.id,
+                        queue_name: queue_name.clone(), // Используем клонированную строку
+                        action_type: format!("{:?}", action.action_type),
+                        timestamp: action.created_at,
+                        stored_at: None,
+                        payload: action.payload,
+                        retry_count: action.retry_count,
+                    };
+                    let _ = storage.save_statement(&statement).await;
                 }
             }
-        }
+        });
     }
 
     #[cfg(target_arch = "wasm32")]
     fn load_from_storage(&self) {
-        use web_sys::window;
-        if let Some(window) = window() {
-            if let Ok(Some(storage)) = window.local_storage() {
-                if let Some(json) = storage.get_item(&self.config.storage_key).ok().flatten() {
-                    if let Ok(queue_data) = serde_json::from_str::<Vec<QueueAction<T>>>(&json) {
-                        *self.queue.borrow_mut() = queue_data.into();
-                    }
-                }
-            }
-        }
+        // Заглушка, реальное восстановление делается в специфичных для контура очередях
     }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn persist_to_storage(&self) {}
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn load_from_storage(&self) {}
 
     #[cfg(target_arch = "wasm32")]
     fn notify_service_worker(&self) {
@@ -138,17 +144,9 @@ impl<T: Clone + Serialize + for<'de> Deserialize<'de>> QueueCore<T> {
         }
     }
 
-    // --- Серверные заглушки (no-op) ---
-    #[cfg(not(target_arch = "wasm32"))]
-    fn persist_to_storage(&self) {}
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn load_from_storage(&self) {}
-
     #[cfg(not(target_arch = "wasm32"))]
     fn notify_service_worker(&self) {}
 
-    // --- Общие методы ---
     pub fn len(&self) -> usize {
         self.queue.borrow().len()
     }

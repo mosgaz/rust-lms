@@ -1,4 +1,7 @@
 // crates/client/src/auth/layout.rs
+// TODO: https://leptos.rust-ui.com/blocks/login
+// TODO: https://leptos.rust-ui.com/view/login02
+// TODO: Use crates/ui/layouts/split Layout
 use leptos::prelude::*;
 
 #[component]

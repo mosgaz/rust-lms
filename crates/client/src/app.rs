@@ -20,6 +20,9 @@
 // crates/client/src/app.rs
 // crates/client/src/app.rs
 // crates/client/src/app.rs
+
+
+// crates/client/src/app.rs
 use leptos::prelude::*;
 use leptos_router::{
     path,
@@ -27,7 +30,6 @@ use leptos_router::{
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::window;
 
 use crate::shared::state::AppQueueState;
 use crate::student::services::offline_queue::STUDENT_QUEUE;
@@ -52,8 +54,11 @@ use crate::student::pages::dashboard::StudentDashboard;
 
 #[cfg(target_arch = "wasm32")]
 fn is_online_global() -> bool {
-    window().map(|w| w.navigator().on_line()).unwrap_or(true)
+    web_sys::window()
+        .map(|w| w.navigator().on_line())
+        .unwrap_or(true)
 }
+
 #[cfg(not(target_arch = "wasm32"))]
 fn is_online_global() -> bool {
     true
@@ -62,9 +67,9 @@ fn is_online_global() -> bool {
 #[component]
 pub fn App() -> impl IntoView {
     // 1. Создаем глобальные сигналы для всего приложения
-    let is_online_signal = create_rw_signal(is_online_global());
-    let student_queue_size = create_rw_signal(STUDENT_QUEUE.with(|q| q.len()));
-    let admin_queue_size = create_rw_signal(ADMIN_QUEUE.with(|q| q.len()));
+    let is_online_signal = RwSignal::new(is_online_global());
+    let student_queue_size = RwSignal::new(STUDENT_QUEUE.with(|q| q.len()));
+    let admin_queue_size = RwSignal::new(ADMIN_QUEUE.with(|q| q.len()));
 
     // 2. Помещаем их в типобезопасную структуру и предоставляем контекст
     provide_context(AppQueueState {
@@ -73,10 +78,24 @@ pub fn App() -> impl IntoView {
         admin_queue_size,
     });
 
-    // 3. Настраиваем слушатели сети ОДИН раз
+    // 3. Асинхронное восстановление очередей из IndexedDB при старте
     #[cfg(target_arch = "wasm32")]
-    if let Some(window) = window() {
-        // Слушатель для Student Queue
+    {
+        let student_sig = student_queue_size.write_only();
+        let admin_sig = admin_queue_size.write_only();
+        
+        spawn_local(async move {
+            let student_queue = STUDENT_QUEUE.with(|q| q.clone());
+            student_queue.restore_from_storage(student_sig).await;
+            
+            let admin_queue = ADMIN_QUEUE.with(|q| q.clone());
+            admin_queue.restore_from_storage(admin_sig).await;
+        });
+    }
+
+    // 4. Настраиваем слушатели сети ОДИН раз
+    #[cfg(target_arch = "wasm32")]
+    if let Some(window) = web_sys::window() {
         let student_online_closure = Closure::wrap(Box::new({
             let student_queue_size = student_queue_size;
             move || {
@@ -91,7 +110,6 @@ pub fn App() -> impl IntoView {
             }
         }) as Box<dyn FnMut()>);
 
-        // Слушатель для Admin Queue
         let admin_online_closure = Closure::wrap(Box::new({
             let admin_queue_size = admin_queue_size;
             move || {
@@ -126,7 +144,7 @@ pub fn App() -> impl IntoView {
                 </ParentRoute>
 
                 <Route path=path!("/login") view=|| view! { 
-                    <crate::auth::layout::AuthLayout><Login/></crate::auth::layout::AuthLayout> 
+                    <AuthLayout><Login/></AuthLayout> 
                 } />
 
                 <ParentRoute path=path!("/admin") view=CPanelLayout>

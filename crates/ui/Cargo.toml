@@ -13,6 +13,7 @@ leptos = { workspace = true }
 leptos_router = { workspace = true }
 # Важнейшая зависимость для макроса clx! и работы со строками классов
 tw_merge = { workspace = true }
+strum = { workspace = true }
 # Необходим макросу variants! для склеивания идентификаторов (например, [<$name Variants>])
 paste = "1.0"
 # Подключаем наш соседний изолированный крейт иконок из Workspace

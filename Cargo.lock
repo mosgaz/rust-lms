@@ -2979,6 +2979,7 @@ dependencies = [
  "chrono",
  "console_error_panic_hook",
  "gloo",
+ "js-sys",
  "leptos",
  "leptos_axum",
  "leptos_meta",
@@ -3049,6 +3050,7 @@ dependencies = [
  "leptos_router",
  "paste",
  "rust-lms-icons",
+ "strum 0.28.0",
  "tw_merge",
 ]
 

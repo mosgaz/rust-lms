@@ -1,3 +1,4 @@
+# crates/client/Cargo.toml
 [package]
 name = "rust-lms-client"
 version.workspace = true
@@ -62,12 +63,28 @@ web-sys = { workspace = true, features = [
     "MessageEvent",
     "Event",
     "EventTarget",
+    # --- IndexedDB фичи ---
+    "IdbFactory",
+    "IdbOpenDbRequest",
+    "IdbDatabase",
+    "IdbTransaction",
+    "IdbTransactionMode",
+    "IdbObjectStore",
+    "IdbObjectStoreParameters",
+    "IdbIndex",
+    "IdbIndexParameters", 
+    "IdbCursorWithValue",
+    "IdbKeyRange",
+    "DomException",
 ] }
 wasm-bindgen-futures = "0.4"
 gloo = { workspace = true, features = ["futures"] }
 serde-wasm-bindgen = { workspace = true }
 # Рекомендуется для красивых ошибок в консоли браузера
 console_error_panic_hook = "0.1"
+js-sys = "0.3.106"
+
+# [target.'cfg(target_arch = "wasm32")'.dependencies]
 
 # Подключаем tower-http строго для НЕ-WASM таргетов (фича "fs" уже есть в корне)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

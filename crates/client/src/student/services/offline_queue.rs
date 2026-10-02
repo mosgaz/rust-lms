@@ -1,5 +1,4 @@
-// crates/client/src/student/services/offline_queue.rs
-use crate::shared::services::queue_core::{QueueConfig, QueueCore, QueuePriority};
+use crate::shared::services::queue_core::{QueueAction, QueueConfig, QueueCore, QueuePriority};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -56,6 +55,45 @@ impl StudentQueue {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub async fn process_queue(&self, _queue_size_signal: WriteSignal<usize>) {}
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn restore_from_storage(&self, queue_size_signal: WriteSignal<usize>) {
+        use crate::shared::storage::get_storage;
+
+        if let Ok(storage) = get_storage().await {
+            if let Ok(statements) = storage.get_statements_chunked(1000).await {
+                let mut queue = self.core.queue.borrow_mut();
+                queue.clear();
+                let mut count = 0;
+
+                for stmt in statements {
+                    if stmt.queue_name == "student" {
+                        let action_type = match stmt.action_type.as_str() {
+                            "SubmitProgress" => StudentAction::SubmitProgress,
+                            "CompleteLesson" => StudentAction::CompleteLesson,
+                            "SubmitQuiz" => StudentAction::SubmitQuiz,
+                            "SyncBookmark" => StudentAction::SyncBookmark,
+                            _ => continue,
+                        };
+
+                        count += 1;
+                        queue.push_back(QueueAction {
+                            id: stmt.statement_id,
+                            action_type,
+                            payload: stmt.payload,
+                            created_at: stmt.timestamp,
+                            retry_count: stmt.retry_count,
+                            priority: QueuePriority::Normal,
+                        });
+                    }
+                }
+                queue_size_signal.set(count);
+            }
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub async fn restore_from_storage(&self, _queue_size_signal: WriteSignal<usize>) {}
 
     pub fn len(&self) -> usize {
         self.core.len()
