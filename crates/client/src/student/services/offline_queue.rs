@@ -1,3 +1,4 @@
+// crates/client/src/student/services/offline_queue.rs
 use crate::shared::services::queue_core::{QueueAction, QueueConfig, QueueCore, QueuePriority};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -68,7 +69,7 @@ impl StudentQueue {
 
                 for stmt in statements {
                     if stmt.queue_name == "student" {
-                        let action_type = match stmt.action_type.as_str() {
+                        let action_type = match stmt.verb.as_str() {
                             "SubmitProgress" => StudentAction::SubmitProgress,
                             "CompleteLesson" => StudentAction::CompleteLesson,
                             "SubmitQuiz" => StudentAction::SubmitQuiz,
@@ -77,11 +78,17 @@ impl StudentQueue {
                         };
 
                         count += 1;
+                        
+                        // Парсим ISO 8601 timestamp обратно в unix timestamp
+                        let created_at = chrono::DateTime::parse_from_rfc3339(&stmt.timestamp)
+                            .map(|dt| dt.timestamp())
+                            .unwrap_or(0);
+
                         queue.push_back(QueueAction {
-                            id: stmt.statement_id,
+                            id: stmt.id,
                             action_type,
-                            payload: stmt.payload,
-                            created_at: stmt.timestamp,
+                            payload: serde_json::json!({ "course_id": stmt.object }),
+                            created_at,
                             retry_count: stmt.retry_count,
                             priority: QueuePriority::Normal,
                         });

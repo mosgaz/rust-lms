@@ -1,3 +1,4 @@
+// crates/client/src/shared/services/queue_core.rs
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -93,23 +94,49 @@ impl<T: Clone + Serialize + for<'de> Deserialize<'de> + std::fmt::Debug + 'stati
         *queue = items.into();
     }
 
-        #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     fn persist_to_storage(&self) {
-        // 1. Клонируем данные СРАЗУ, чтобы они не зависели от времени жизни `self`
         let queue_data: Vec<_> = self.queue.borrow().iter().cloned().collect();
-        let queue_name = self.config.queue_name.clone(); 
+        let queue_name = self.config.queue_name.clone();
         
-        // 2. Теперь async move блок полностью автономен и не захватывает `self`
         wasm_bindgen_futures::spawn_local(async move {
             if let Ok(storage) = get_storage().await {
+                // §5.1: Получаем дельту времени (если ее нет, будет 0)
+                let delta_ms = storage.get_client_clock().await
+                    .ok()
+                    .flatten()
+                    .map(|c| c.delta_ms)
+                    .unwrap_or(0);
+
+                if delta_ms == 0 {
+                    leptos::logging::warn!("[PWA-SYNC] Clock delta not measured. Using device time (risk of timestamp skew).");
+                }
+
                 for action in queue_data {
+                    // §5.1: Корректируем время устройства на дельту
+                    let adjusted_time_ms = (action.created_at * 1000) + delta_ms;
+                    
+                    // Форматируем в ISO 8601 (требование xAPI)
+                    let timestamp_iso = chrono::DateTime::from_timestamp_millis(adjusted_time_ms)
+                        .unwrap_or_else(|| chrono::Utc::now())
+                        .to_rfc3339();
+
+                    // Извлекаем object из payload (course_id или file_id)
+                    let object = action.payload.get("course_id")
+                        .or_else(|| action.payload.get("file_id"))
+                        .or_else(|| action.payload.get("user_ids"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+
                     let statement = XapiStatement {
-                        statement_id: action.id,
-                        queue_name: queue_name.clone(), // Используем клонированную строку
-                        action_type: format!("{:?}", action.action_type),
-                        timestamp: action.created_at,
-                        stored_at: None,
-                        payload: action.payload,
+                        id: action.id,
+                        timestamp: timestamp_iso,
+                        stored_at: None, // §2.2: инициализируется как null
+                        actor: "student_123".to_string(), // Заглушка: в реальности из контекста аутентификации
+                        verb: format!("{:?}", action.action_type),
+                        object,
+                        queue_name: queue_name.clone(),
                         retry_count: action.retry_count,
                     };
                     let _ = storage.save_statement(&statement).await;

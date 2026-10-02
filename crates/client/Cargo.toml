@@ -76,6 +76,7 @@ web-sys = { workspace = true, features = [
     "IdbCursorWithValue",
     "IdbKeyRange",
     "DomException",
+	"DomStringList",
 ] }
 wasm-bindgen-futures = "0.4"
 gloo = { workspace = true, features = ["futures"] }

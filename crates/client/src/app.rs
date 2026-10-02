@@ -1,27 +1,3 @@
-// use crate::ui::Button;
-// use leptos::prelude::*;
-
-// #[component]
-// pub fn App() -> impl IntoView {
-//     view! {
-//         // Tailwind-классы для центрирования и проверки работы стилей
-//         <main class="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4 gap-6">
-//             <h1 class="text-3xl font-bold text-gray-800">
-//                 Проверка стилей и компонентов
-//             </h1>
-
-//             <Button>
-//                 "Тестовая кнопка"
-//             </Button>
-//         </main>
-//     }
-// }
-// crates/client/src/app.rs
-// crates/client/src/app.rs
-// crates/client/src/app.rs
-// crates/client/src/app.rs
-
-
 // crates/client/src/app.rs
 use leptos::prelude::*;
 use leptos_router::{
@@ -93,7 +69,34 @@ pub fn App() -> impl IntoView {
         });
     }
 
-    // 4. Настраиваем слушатели сети ОДИН раз
+    // 4. Эмуляция калибровки времени (Clock Sync) §5.1
+    #[cfg(target_arch = "wasm32")]
+    {
+        spawn_local(async move {
+            if let Ok(storage) = crate::shared::storage::get_storage().await {
+                // Проверяем, есть ли уже калибровка
+                if storage.get_client_clock().await.ok().flatten().is_none() {
+                    leptos::logging::log!("[PWA-SYNC] Calibrating client clock (mock)...");
+                    
+                    // Эмуляция: серверное время на 5 секунд (5000 мс) опережает клиентское
+                    let mock_delta_ms = 5000; 
+                    
+                    let clock = crate::shared::storage::ClientClock {
+                        key: "delta".to_string(),
+                        delta_ms: mock_delta_ms,
+                        measured_at: chrono::Utc::now().to_rfc3339(),
+                        source: "mock_api".to_string(),
+                    };
+                    
+                    if storage.save_client_clock(&clock).await.is_ok() {
+                        leptos::logging::log!("[PWA-SYNC] Clock calibrated. Delta: {} ms", mock_delta_ms);
+                    }
+                }
+            }
+        });
+    }
+
+    // 5. Настраиваем слушатели сети ОДИН раз
     #[cfg(target_arch = "wasm32")]
     if let Some(window) = web_sys::window() {
         let student_online_closure = Closure::wrap(Box::new({
