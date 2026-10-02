@@ -31,14 +31,17 @@ pub use layouts::viewport::ViewportLayout;
 pub use layouts::wrap::WrapLayout;
 
 // Реэкспорт интерактивных UI-компонентов (Components)
-// pub use components::accordion::{
-//     Accordion, AccordionContent, AccordionDescription, AccordionItem, AccordionTitle,
-//     AccordionTrigger,
-// };
 pub use components::accordion::*;
 pub use components::avatar::*;
 pub use components::badge::*;
+pub use components::breadcrumbs::*;
 pub use components::button::*;
+pub use components::card::*;
+pub use components::checkbox::*;
+pub use components::chips::*;
+pub use components::dialog::*;
+pub use components::drawer::*;
+pub use components::expandable::*;
 pub use components::input::*;
 pub use components::label::*;
 pub use components::sheet::*;
@@ -53,14 +56,18 @@ pub use utils::Utils;
 pub use rust_lms_icons as icons;
 
 pub mod prelude {
-    // pub use crate::components::accordion::{
-    //     Accordion, AccordionContent, AccordionDescription, AccordionItem, AccordionTitle,
-    //     AccordionTrigger,
-    // };
+
     pub use crate::components::accordion::*;
     pub use crate::components::avatar::*;
     pub use crate::components::badge::*;
+    pub use crate::components::breadcrumbs::*;
     pub use crate::components::button::*;
+    pub use crate::components::card::*;
+    pub use crate::components::checkbox::*;
+    pub use crate::components::chips::*;
+    pub use crate::components::dialog::*;
+    pub use crate::components::drawer::*;
+    pub use crate::components::expandable::*;
     pub use crate::components::input::*;
     pub use crate::components::label::*;
     pub use crate::components::sheet::*;
@@ -69,4 +76,5 @@ pub mod prelude {
 
     pub use crate::layouts::*;
     pub use crate::utils::Utils;
+
 }
