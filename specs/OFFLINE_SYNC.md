@@ -1,5 +1,3 @@
-## Файл 2: `specs/OFFLINE_SYNC.md`
-
 # Спецификация Offline-First PWA и Управления Синхронизацией
 
 **Файл спецификации:** `specs/OFFLINE_SYNC.md`
@@ -251,3 +249,16 @@ crates/client/public/
 - `STANDARDS.md` §«xAPI» — формат JSON-LD.
 - `STRUCTURE.md` §3.5 — структура крейта `client`.
 - `STATUS.md` — текущий статус реализации офлайн-функциональности.
+
+## 10. Полезные ресурсы и инструменты для PWA
+
+### Настройка и стандарты
+- [Обработчики протоколов URL (Chrome)](https://developer.chrome.com/docs/web-platform/best-practices/url-protocol-handler?hl=ru) — лучшие практики регистрации кастомных URL-схем для PWA.
+- [Маскируемые иконки (Maskable Icons) (web.dev)](https://web.dev/articles/maskable-icon?hl=ru) — руководство по созданию адаптивных иконок для Android и iOS.
+- [Window Controls Overlay (Microsoft Edge PWA)](https://learn.microsoft.com/en-us/microsoft-edge/progressive-web-apps/how-to/window-controls-overlay) — настройка отображения элементов управления окном для нативного вида PWA на десктопе.
+
+### Генерация ассетов (иконки, манифест, splash-экраны)
+- [RealFaviconGenerator](https://realfavicongenerator.net/) — комплексная генерация фавиконов, манифеста и мета-тегов для всех браузеров и платформ.
+- [Favicon.io](https://favicon.io/) — быстрая генерация фавиконов из текста, изображений или эмодзи.
+- [PWA Assets Generator](https://www.pwa-assets.com/) — специализированный CLI/онлайн-инструмент для генерации полного набора ассетов PWA (включая splash-экраны).
+- [Maskable.app Editor](https://maskable.app/editor) — онлайн-редактор для визуальной проверки и подгонки иконок под требования `maskable-icon`.
