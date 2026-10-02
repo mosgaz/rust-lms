@@ -10,42 +10,41 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use chrono::Utc;
 
-// §2.2: Структура, соответствующая xAPI Statement JSON-LD (упрощенная для MVP)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct XapiStatement {
-    pub id: String,                // UUID v4 (statement_id)
-    pub timestamp: String,         // ISO 8601 (скорректированное время)
-    pub stored_at: Option<String>, // Изначально null
-    pub actor: String,             // Упрощенно: user_id или "anonymous"
-    pub verb: String,              // Упрощенно: название действия (напр. "SubmitProgress")
-    pub object: String,            // Упрощенно: идентификатор объекта (напр. "course_123")
-    pub queue_name: String,        // Внутреннее поле для фильтрации при восстановлении
+    pub id: String,
+    pub timestamp: String,
+    pub stored_at: Option<String>,
+    pub actor: String,
+    pub verb: String,
+    pub object: String,
+    pub queue_name: String,
     pub retry_count: u8,
 }
 
-// §2.4: Структура для хранения дельты времени
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientClock {
-    pub key: String,          // "delta"
-    pub delta_ms: i64,        // server_time - client_time
-    pub measured_at: String,  // ISO 8601
-    pub source: String,       // "mock_api" (пока нет реального NTP)
+    pub key: String,
+    pub delta_ms: i64,
+    pub measured_at: String,
+    pub source: String,
 }
 
 pub struct OfflineStorage {
     db: IdbDatabase,
 }
 
-// ... (функции request_to_promise и tx_complete_promise остаются без изменений) ...
 fn request_to_promise(req: &IdbRequest) -> Result<js_sys::Promise, JsValue> {
     Ok(js_sys::Promise::new(&mut |resolve, reject| {
         let resolve = resolve.clone();
         let reject = reject.clone();
+        
         let success_cb = Closure::wrap(Box::new(move |event: web_sys::Event| {
             let target = event.target().unwrap();
             let req = target.dyn_into::<IdbRequest>().unwrap();
             let _ = resolve.call1(&JsValue::NULL, &req.result().unwrap());
         }) as Box<dyn FnMut(_)>);
+        
         let error_cb = Closure::wrap(Box::new(move |event: web_sys::Event| {
             let target = event.target().unwrap();
             let req = target.dyn_into::<IdbRequest>().unwrap();
@@ -55,8 +54,10 @@ fn request_to_promise(req: &IdbRequest) -> Result<js_sys::Promise, JsValue> {
             };
             let _ = reject.call1(&JsValue::NULL, &JsValue::from_str(&err_msg));
         }) as Box<dyn FnMut(_)>);
+
         req.set_onsuccess(Some(success_cb.as_ref().unchecked_ref()));
         req.set_onerror(Some(error_cb.as_ref().unchecked_ref()));
+        
         success_cb.forget();
         error_cb.forget();
     }))
@@ -66,9 +67,11 @@ fn tx_complete_promise(tx: &IdbTransaction) -> Result<js_sys::Promise, JsValue> 
     Ok(js_sys::Promise::new(&mut |resolve, reject| {
         let resolve = resolve.clone();
         let reject = reject.clone();
+        
         let success_cb = Closure::wrap(Box::new(move |_event: web_sys::Event| {
             let _ = resolve.call0(&JsValue::NULL);
         }) as Box<dyn FnMut(_)>);
+        
         let error_cb = Closure::wrap(Box::new(move |event: web_sys::Event| {
             let target = event.target().unwrap();
             let tx = target.dyn_into::<IdbTransaction>().unwrap();
@@ -78,8 +81,10 @@ fn tx_complete_promise(tx: &IdbTransaction) -> Result<js_sys::Promise, JsValue> 
             };
             let _ = reject.call1(&JsValue::NULL, &JsValue::from_str(&err_msg));
         }) as Box<dyn FnMut(_)>);
+
         tx.set_oncomplete(Some(success_cb.as_ref().unchecked_ref()));
         tx.set_onerror(Some(error_cb.as_ref().unchecked_ref()));
+        
         success_cb.forget();
         error_cb.forget();
     }))
@@ -90,7 +95,6 @@ impl OfflineStorage {
         let window = web_sys::window().ok_or("No window")?;
         let indexed_db = window.indexed_db()?.ok_or("No indexed_db")?;
         
-        // Версия 3, чтобы создать новое хранилище client_clock
         let req = indexed_db.open_with_u32("lms_offline_db", 3)?;
         
         let state = Rc::new(RefCell::new(None));
@@ -101,26 +105,25 @@ impl OfflineStorage {
             let req = target.dyn_into::<IdbOpenDbRequest>().unwrap();
             let db = req.result().unwrap().dyn_into::<IdbDatabase>().unwrap();
             
-            // 1. Пытаемся создать offline_xapi_statements. 
-            // Если оно уже есть, вернется Err, который мы просто игнорируем.
+            // Создаем offline_xapi_statements
             let mut store_params = IdbObjectStoreParameters::new();
-            store_params.set_key_path(&JsValue::from_str("id")); // xAPI использует 'id'
+            store_params.set_key_path(&JsValue::from_str("id"));
             
             if let Ok(store) = db.create_object_store_with_optional_parameters("offline_xapi_statements", &store_params) {
                 let mut index_params = IdbIndexParameters::new();
                 index_params.set_unique(false);
                 let _ = store.create_index_with_str_and_optional_parameters("timestamp", "timestamp", &index_params);
-                leptos::logging::log!("[IndexedDB] Created offline_xapi_statements store and index");
+                leptos::logging::log!("[IndexedDB] Created offline_xapi_statements store");
             }
 
-            // 2. Пытаемся создать client_clock. Аналогично игнорируем ошибку, если уже существует.
+            // Создаем client_clock
             let mut clock_params = IdbObjectStoreParameters::new();
             clock_params.set_key_path(&JsValue::from_str("key"));
             if db.create_object_store_with_optional_parameters("client_clock", &clock_params).is_ok() {
                 leptos::logging::log!("[IndexedDB] Created client_clock store");
             }
         }) as Box<dyn FnMut(_)>);
-
+        
         let success_cb = Closure::wrap(Box::new(move |event: web_sys::Event| {
             let target = event.target().unwrap();
             let req = target.dyn_into::<IdbOpenDbRequest>().unwrap();
@@ -159,8 +162,10 @@ impl OfflineStorage {
     pub async fn save_statement(&self, statement: &XapiStatement) -> Result<(), JsValue> {
         let tx = self.db.transaction_with_str_and_mode("offline_xapi_statements", IdbTransactionMode::Readwrite)?;
         let store = tx.object_store("offline_xapi_statements")?;
+        
         let js_value = serde_wasm_bindgen::to_value(statement)?;
         let req = store.put(&js_value)?; 
+        
         wasm_bindgen_futures::JsFuture::from(request_to_promise(&req)?).await?;
         wasm_bindgen_futures::JsFuture::from(tx_complete_promise(&tx)?).await?;
         Ok(())
@@ -169,6 +174,7 @@ impl OfflineStorage {
     pub async fn get_statements_chunked(&self, limit: usize) -> Result<Vec<XapiStatement>, JsValue> {
         let tx = self.db.transaction_with_str_and_mode("offline_xapi_statements", IdbTransactionMode::Readonly)?;
         let store = tx.object_store("offline_xapi_statements")?;
+        
         let mut result = Vec::new();
         let cursor_req = if let Ok(index) = store.index("timestamp") {
             index.open_cursor()?
@@ -197,7 +203,23 @@ impl OfflineStorage {
         Ok(result)
     }
 
-    // --- Методы для Client Clock (§2.4 и §5.1) ---
+    pub async fn delete_statements(&self, ids: &[String]) -> Result<(), JsValue> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        
+        let tx = self.db.transaction_with_str_and_mode("offline_xapi_statements", IdbTransactionMode::Readwrite)?;
+        let store = tx.object_store("offline_xapi_statements")?;
+        
+        for id in ids {
+            let req = store.delete(&JsValue::from_str(id))?;
+            let _ = wasm_bindgen_futures::JsFuture::from(request_to_promise(&req)?).await;
+        }
+        
+        wasm_bindgen_futures::JsFuture::from(tx_complete_promise(&tx)?).await?;
+        Ok(())
+    }
+
     pub async fn save_client_clock(&self, clock: &ClientClock) -> Result<(), JsValue> {
         let tx = self.db.transaction_with_str_and_mode("client_clock", IdbTransactionMode::Readwrite)?;
         let store = tx.object_store("client_clock")?;

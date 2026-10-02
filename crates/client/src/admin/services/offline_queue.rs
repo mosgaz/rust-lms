@@ -68,16 +68,77 @@ impl AdminQueue {
 
     #[cfg(target_arch = "wasm32")]
     pub async fn process_queue(&self, queue_size_signal: WriteSignal<usize>) {
+        use crate::shared::storage::get_storage;
         use gloo::timers::future::TimeoutFuture;
-        while let Some(action) = self.core.dequeue() {
+
+        const CHUNK_SIZE: usize = 50;
+
+        loop {
+            let storage = match get_storage().await {
+                Ok(s) => s,
+                Err(_) => break,
+            };
+
+            let statements = match storage.get_statements_chunked(CHUNK_SIZE).await {
+                Ok(stmts) => stmts,
+                Err(_) => break,
+            };
+
+            if statements.is_empty() {
+                break;
+            }
+
+            let chunk: Vec<_> = statements.into_iter().filter(|s| s.queue_name == "admin").collect();
+            
+            if chunk.is_empty() {
+                break;
+            }
+
+            let chunk_ids: Vec<String> = chunk.iter().map(|s| s.id.clone()).collect();
+
             leptos::logging::log!(
-                "[AdminQueue] Processing action: {:?} (id: {})",
-                action.action_type,
-                action.id
+                "[AdminQueue] Syncing chunk of {} statements...",
+                chunk_ids.len()
             );
-            TimeoutFuture::new(500).await;
+
+            let api_result = mock_sync_api(&chunk).await;
+
+            match api_result {
+                Ok(synced_ids) => {
+                    leptos::logging::log!("[AdminQueue] Chunk synced successfully. Deleting from DB...");
+                    if storage.delete_statements(&synced_ids).await.is_ok() {
+                        leptos::logging::log!("[AdminQueue] Deleted {} statements from DB", synced_ids.len());
+                    }
+                }
+                Err(e) => {
+                    leptos::logging::warn!("[AdminQueue] Sync failed: {}. Retrying later.", e);
+                    
+                    for mut stmt in chunk {
+                        if stmt.retry_count < 10 {
+                            stmt.retry_count += 1;
+                            let _ = storage.save_statement(&stmt).await;
+                        } else {
+                            leptos::logging::error!("[AdminQueue] Statement {} exceeded max retries, discarding", stmt.id);
+                            let _ = storage.delete_statements(&[stmt.id]).await;
+                        }
+                    }
+                    break;
+                }
+            }
+
+            let remaining = storage.get_statements_chunked(1000).await.map(|s| {
+                s.into_iter().filter(|x| x.queue_name == "admin").count()
+            }).unwrap_or(0);
+            queue_size_signal.set(remaining);
         }
-        queue_size_signal.set(self.core.len());
+        
+        let storage = get_storage().await.ok();
+        if let Some(s) = storage {
+            let final_count = s.get_statements_chunked(1000).await.map(|s| {
+                s.into_iter().filter(|x| x.queue_name == "admin").count()
+            }).unwrap_or(0);
+            queue_size_signal.set(final_count);
+        }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -135,4 +196,11 @@ impl AdminQueue {
 
 thread_local! {
     pub static ADMIN_QUEUE: AdminQueue = AdminQueue::new();
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn mock_sync_api(statements: &[crate::shared::storage::XapiStatement]) -> Result<Vec<String>, String> {
+    gloo::timers::future::TimeoutFuture::new(800).await;
+    let confirmed_ids: Vec<String> = statements.iter().map(|s| s.id.clone()).collect();
+    Ok(confirmed_ids)
 }
