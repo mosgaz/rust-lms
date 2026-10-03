@@ -1,3 +1,4 @@
+# crates/api/Cargo.toml
 [package]
 name = "rust-lms-api"
 version.workspace = true

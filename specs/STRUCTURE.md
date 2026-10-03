@@ -95,6 +95,10 @@
   - `rls.rs` — `RlsContext` для установки сессионной переменной `app.current_tenant_id` (см. `CODING_STANDARDS.md` §2.1 и ADR 2026.09.28-0001).
   - `repositories/` — базовые репозитории (`TenantRepository`, `UserRepository`) с принудительным применением RLS-контекста в транзакциях.
   - `entities/` — заглушка для будущих сгенерированных сущностей SeaORM (read-only типы).
+- `src/http/` — HTTP-слой на базе Axum:
+  - `middleware.rs` — извлечение `TenantId` из заголовка `X-Tenant-ID` и инъекция в `Request::extensions`.
+  - `handlers.rs` — REST-обработчики для CRUD-операций над тенантами и пользователями с унифицированным `ApiResponse<T>`.
+  - `router.rs` — сборка Axum-роутера с разделением на публичные и tenant-scoped маршруты.
 - `src/lrs/` — низкоуровневая обработка записей LRS (пакетный импорт в TimescaleDB или ClickHouse).
 - `src/etl/` — потоковые чанк-парсеры кастомного импорта пользователей (Custom ETL Mapper).
 - `src/scim/` — маппинг SCIM 2.0 (RFC 7643 / 7644) на внутренние сущности `users` / `batches` (см. `OPEN_API.md` §3.5).
