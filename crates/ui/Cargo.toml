@@ -20,7 +20,8 @@ paste = "1.0"
 rust-lms-icons = { path = "../icons" }
 # TODO: rust-kit-icons
 # icons = { version = "0.18.3", features = ["leptos"] }
-# wasm-bindgen = { workspace = true }
+wasm-bindgen = { workspace = true }
+js-sys = "0.3.106"
 # web-sys = { workspace = true }
 # gloo = { workspace = true }
 # serde = { workspace = true }

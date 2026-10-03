@@ -3046,12 +3046,14 @@ dependencies = [
 name = "rust-lms-ui"
 version = "0.1.0"
 dependencies = [
+ "js-sys",
  "leptos",
  "leptos_router",
  "paste",
  "rust-lms-icons",
  "strum 0.28.0",
  "tw_merge",
+ "wasm-bindgen",
 ]
 
 [[package]]
