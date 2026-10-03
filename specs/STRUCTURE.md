@@ -14,6 +14,7 @@
 
     .
     ├── Cargo.toml                    # Глобальный манифест Cargo workspace
+    ├── config.toml                   # Конфигурация сервера (хост, порт, БД)
     ├── CONTRIBUTING.md               # Стандарты коммитов и ветвления (root)
     ├── README.md                     # Главный путеводитель по репозиторию (root)
     ├── CHANGELOG.md                  # Журнал изменений (Conventional Commits)
@@ -134,9 +135,11 @@
 
 ### 3.6. Крейт: `crates/server` (Axum Runtime Host)
 
-Чисто серверное нативное приложение. Единственная точка входа, содержащая функцию `fn main()`.
+Чисто серверное нативное приложение. Единственная точка входа, содержащая функцию `fn main()`. Порт по умолчанию: **3720**.
 
-- Считывает инфраструктурную конфигурацию `config.toml`.
+- `src/main.rs` — точка входа: инициализация `tracing-subscriber` с `env-filter`, загрузка конфигурации, создание `DatabasePool`, монтирование Axum-роутера из `api` с `TraceLayer`, запуск TCP-слушателя с graceful shutdown (SIGINT/SIGTERM).
+- `src/config.rs` — `AppConfig` с загрузкой из `config.toml` и переопределением через переменные окружения с префиксом `RUST_LMS_` (разделитель `__`). Содержит `ServerConfig` (host, port) и `DatabaseConfig` (url, max/min connections).
+- Считывает инфраструктурную конфигурацию `config.toml` (корень репозитория).
 - Инициализирует пулы подключений `SQLx` к PostgreSQL и ClickHouse/TimescaleDB.
 - Монтирует Axum-роутер, связывает его с `#[server]` RPC-эндпоинтами крейта `client`, регистрирует REST-эндпоинты Open API (`OPEN_API.md`) и запускает Tokio рантайм.
 - Запускает cron-воркеры retention-политик (см. `STANDARDS.md` §«Политики удержания данных») и воркеры вебхуков.

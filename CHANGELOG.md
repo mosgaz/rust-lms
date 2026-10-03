@@ -8,20 +8,22 @@
 ## [Unreleased]
 
 ### Added
+- **server**: точка входа Axum-хоста (`main.rs`) с инициализацией `tracing-subscriber`, загрузкой конфигурации, созданием `DatabasePool`, монтированием роутера из `api` и graceful shutdown (SIGINT/SIGTERM).
+- **server**: модуль конфигурации (`config.rs`) с загрузкой из `config.toml` и переопределением через переменные окружения `RUST_LMS_*`. Порт по умолчанию: 3720.
+- **server**: файл `config.toml` в корне репозитория с настройками сервера и БД.
 - **api**: реализован HTTP-слой на базе Axum с разделением на публичные и tenant-scoped маршруты.
-- **api**: добавлен middleware `extract_tenant_context` для извлечения `TenantId` из заголовка `X-Tenant-ID` и инъекции в `Request::extensions`.
-- **api**: реализованы REST-обработчики для тенантов (`POST /api/v1/tenants`, `GET /api/v1/tenants/:id`).
-- **api**: реализованы tenant-scoped REST-обработчики для пользователей (`POST /api/v1/users`, `GET /api/v1/users/:id`) с автоматическим применением RLS-контекста.
+- **api**: добавлен middleware `extract_tenant_context` для извлечения `TenantId` из заголовка `X-Tenant-ID`.
+- **api**: реализованы REST-обработчики для тенантов (`POST/GET /api/v1/tenants`) и tenant-scoped пользователей (`POST/GET /api/v1/users`).
 - **api**: добавлен унифицированный `ApiResponse<T>` для консистентного формата ответов API.
-- **api**: реализован `DatabasePool` с конфигурируемыми лимитами соединений (min/max connections).
-- **api**: реализован `RlsContext` для установки сессионной переменной `app.current_tenant_id` через `set_config()` (ADR 2026.09.28-0001, CODING_STANDARDS.md §2.1).
-- **api**: добавлены базовые репозитории `TenantRepository` и `UserRepository` с принудительным применением RLS-контекста в транзакциях.
-- **api**: миграция БД `20261003000001_init_rls_and_tenants.sql` с таблицами `tenants` и `users`, политиками RLS и индексами.
+- **api**: реализован `DatabasePool` с конфигурируемыми лимитами соединений.
+- **api**: реализован `RlsContext` для установки сессионной переменной `app.current_tenant_id` (ADR 2026.09.28-0001).
+- **api**: добавлены базовые репозитории `TenantRepository` и `UserRepository` с принудительным RLS-контекстом.
+- **api**: миграция БД `20261003000001_init_rls_and_tenants.sql` с таблицами `tenants`, `users`, политиками RLS и индексами.
 
 ### Refactored
-- **shared**: реорганизованы модели `tenant` и `user` в директорию `models/` для улучшения архитектуры домена и соответствия строгим требованиям документирования (`#![deny(missing_docs)]`).
-- **shared**: добавлены реализации `Display` для `TenantId` и `UserId` для корректной работы с `thiserror`.
+- **shared**: реорганизованы модели `tenant` и `user` в директорию `models/`.
+- **shared**: добавлены реализации `Display` для `TenantId` и `UserId`.
 
 ### Docs
-- **specs**: добавлен раздел §2.4 в `CODING_STANDARDS.md`, регламентирующий временное использование runtime-запросов `sqlx` и переход на compile-time проверку через `.sqlx/` кэш.
-- **specs**: актуализированы `STRUCTURE.md` и `STATUS.md` после реализации RLS-фундамента и HTTP-слоя в крейте `api`.
+- **specs**: добавлен раздел §2.4 в `CODING_STANDARDS.md` (offline-режим `sqlx`).
+- **specs**: актуализированы `STRUCTURE.md`, `STATUS.md` и `CHANGELOG.md` после реализации серверного ядра.
