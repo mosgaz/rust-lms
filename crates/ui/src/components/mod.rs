@@ -1,5 +1,11 @@
 // crates/ui/src/components/mod.rs
 pub mod accordion;
+pub mod action_bar;
+pub mod alert_dialog;
+pub mod alert;
+pub mod animate;
+pub mod aspect_ratio;
+pub mod attachment;
 pub mod avatar;
 pub mod badge;
 pub mod breadcrumbs;

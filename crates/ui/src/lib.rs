@@ -32,7 +32,12 @@ pub use layouts::wrap::WrapLayout;
 
 // Реэкспорт интерактивных UI-компонентов (Components)
 pub use components::accordion::*;
+pub use components::action_bar::*;
+pub use components::alert_dialog::*;
 pub use components::avatar::*;
+pub use components::animate::*;
+pub use components::aspect_ratio::*;
+pub use components::attachment::*;
 pub use components::badge::*;
 pub use components::breadcrumbs::*;
 pub use components::button::*;
@@ -58,6 +63,12 @@ pub use rust_lms_icons as icons;
 pub mod prelude {
 
     pub use crate::components::accordion::*;
+    pub use crate::components::action_bar::*;
+    pub use crate::components::alert_dialog::*;
+    pub use crate::components::alert::*;
+    pub use crate::components::animate::*;
+    pub use crate::components::aspect_ratio::*;
+    pub use crate::components::attachment::*;
     pub use crate::components::avatar::*;
     pub use crate::components::badge::*;
     pub use crate::components::breadcrumbs::*;
