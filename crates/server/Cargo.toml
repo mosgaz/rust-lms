@@ -1,3 +1,4 @@
+# crates/server/Cargo.toml
 [package]
 name = "rust-lms-server"
 version.workspace = true
@@ -6,29 +7,33 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Точка входа бэкенда хоста на Axum"
+description = "Точка входа Axum-хоста: инициализация БД, монтирование роутера, graceful shutdown"
 
 [[bin]]
 name = "rust-lms-server"
 path = "src/main.rs"
 
 [dependencies]
-rust-lms-api = { path = "../api" }
-rust-lms-client = { path = "../client" }
 rust-lms-shared = { path = "../shared" }
+rust-lms-api = { path = "../api" }
 
+# Async runtime
+tokio = { workspace = true, features = ["full", "signal"] }
+
+# HTTP framework
 axum = { workspace = true }
-tower = { workspace = true }
-tower-http = { workspace = true }
-hyper = { workspace = true }
+tower-http = { workspace = true, features = ["cors", "trace"] }
 
-tokio = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-uuid = { workspace = true }
-chrono = { workspace = true }
-
-thiserror = { workspace = true }
-anyhow = { workspace = true }
+# Logging
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Configuration
+config = "0.14"
+serde = { workspace = true, features = ["derive"] }
+
+# Error handling
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

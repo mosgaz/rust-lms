@@ -1,0 +1,12 @@
+# config.toml
+# Конфигурация сервера rust-lms.
+# Переопределяется переменными окружения с префиксом RUST_LMS_ (разделитель __).
+
+[server]
+host = "127.0.0.1"
+port = 3720
+
+[database]
+url = "postgres://postgres:postgres@localhost:5432/rust_lms"
+max_connections = 10
+min_connections = 2
