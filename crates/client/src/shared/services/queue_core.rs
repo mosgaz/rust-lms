@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
+#[cfg(target_arch = "wasm32")]
 use crate::shared::storage::{get_storage, XapiStatement};
 
 #[derive(Debug, Clone)]
@@ -145,16 +146,20 @@ impl<T: Clone + Serialize + for<'de> Deserialize<'de> + std::fmt::Debug + 'stati
         });
     }
 
-    #[cfg(target_arch = "wasm32")]
-    fn load_from_storage(&self) {
-        // Заглушка, реальное восстановление делается в специфичных для контура очередях
-    }
-
     #[cfg(not(target_arch = "wasm32"))]
     fn persist_to_storage(&self) {}
 
+    #[cfg(target_arch = "wasm32")]
+    #[allow(dead_code)]
+    fn load_from_storage(&self) {
+        // TODO: реализовать восстановление очереди из IndexedDB
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
-    fn load_from_storage(&self) {}
+    #[allow(dead_code)]
+    fn load_from_storage(&self) {
+        // TODO: реализовать восстановление очереди из IndexedDB
+    }
 
     #[cfg(target_arch = "wasm32")]
     fn notify_service_worker(&self) {

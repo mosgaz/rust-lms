@@ -1,5 +1,7 @@
 // crates/client/src/student/services/offline_queue.rs
-use crate::shared::services::queue_core::{QueueAction, QueueConfig, QueueCore, QueuePriority};
+use crate::shared::services::queue_core::{QueueConfig, QueueCore};
+#[cfg(target_arch = "wasm32")]
+use crate::shared::services::queue_core::{QueueAction, QueuePriority};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -43,7 +45,6 @@ impl StudentQueue {
     #[cfg(target_arch = "wasm32")]
     pub async fn process_queue(&self, queue_size_signal: WriteSignal<usize>) {
         use crate::shared::storage::get_storage;
-        use gloo::timers::future::TimeoutFuture;
 
         const CHUNK_SIZE: usize = 50;
 

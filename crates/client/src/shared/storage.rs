@@ -8,7 +8,6 @@ use web_sys::{
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use chrono::Utc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct XapiStatement {
@@ -106,18 +105,18 @@ impl OfflineStorage {
             let db = req.result().unwrap().dyn_into::<IdbDatabase>().unwrap();
             
             // Создаем offline_xapi_statements
-            let mut store_params = IdbObjectStoreParameters::new();
+            let store_params = IdbObjectStoreParameters::new();
             store_params.set_key_path(&JsValue::from_str("id"));
             
             if let Ok(store) = db.create_object_store_with_optional_parameters("offline_xapi_statements", &store_params) {
-                let mut index_params = IdbIndexParameters::new();
+                let index_params = IdbIndexParameters::new();
                 index_params.set_unique(false);
                 let _ = store.create_index_with_str_and_optional_parameters("timestamp", "timestamp", &index_params);
                 leptos::logging::log!("[IndexedDB] Created offline_xapi_statements store");
             }
 
             // Создаем client_clock
-            let mut clock_params = IdbObjectStoreParameters::new();
+            let clock_params = IdbObjectStoreParameters::new();
             clock_params.set_key_path(&JsValue::from_str("key"));
             if db.create_object_store_with_optional_parameters("client_clock", &clock_params).is_ok() {
                 leptos::logging::log!("[IndexedDB] Created client_clock store");

@@ -1,5 +1,7 @@
 // crates/client/src/admin/services/offline_queue.rs
-use crate::shared::services::queue_core::{QueueAction, QueueConfig, QueueCore, QueuePriority};
+use crate::shared::services::queue_core::{QueueConfig, QueueCore, QueuePriority};
+#[cfg(target_arch = "wasm32")]
+use crate::shared::services::queue_core::QueueAction;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -69,7 +71,6 @@ impl AdminQueue {
     #[cfg(target_arch = "wasm32")]
     pub async fn process_queue(&self, queue_size_signal: WriteSignal<usize>) {
         use crate::shared::storage::get_storage;
-        use gloo::timers::future::TimeoutFuture;
 
         const CHUNK_SIZE: usize = 50;
 

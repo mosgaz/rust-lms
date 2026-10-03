@@ -2,8 +2,11 @@
 // https://raw.githubusercontent.com/rust-ui/leptos-ui/refs/heads/main/crates/leptos_ui/src/variants.rs
 
 // Re-export dependencies for macro usage
+#[allow(unused_imports)]
 pub use leptos;
+#[allow(unused_imports)]
 pub use paste;
+#[allow(unused_imports)]
 pub use tw_merge;
 
 /// Ultra-sophisticated variants macro for standardized Tailwind CSS component patterns

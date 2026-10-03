@@ -4,7 +4,9 @@ use leptos_router::{
     path,
     components::{Router, Routes, Route, ParentRoute},
 };
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::spawn_local;
 
 use crate::shared::state::AppQueueState;

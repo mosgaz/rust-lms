@@ -1,10 +1,12 @@
 // crates/ui/src/utils/clx.rs
 // https://raw.githubusercontent.com/rust-ui/leptos-ui/refs/heads/main/crates/leptos_ui/src/clx.rs
+#[allow(unused_imports)]
 pub use leptos::prelude::*;
+#[allow(unused_imports)]
 pub use paste;
+#[allow(unused_imports)]
 pub use tw_merge::*;
-
-// pub use crate::utils::Utils;
+#[allow(unused_imports)]
 pub use super::Utils;
 
 /// A macro that creates a component with tailwind class merging
@@ -113,7 +115,8 @@ macro_rules! transition {
                 <$element
                     class=merged_classes
                     data-name=stringify!($name)
-					// style=random_name // <-- ИСПРАВЛЕНО: Теперь переменная задействована в стилях!
+					style=format!("view-transition-name: {}", random_name)
+					// style=format!("--transition-name: {}", random_name)
                 >
                     {children()}
                 </$element>
