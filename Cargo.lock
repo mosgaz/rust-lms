@@ -3056,10 +3056,8 @@ dependencies = [
 name = "rust-lms-shared"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "serde",
- "serde-wasm-bindgen",
- "serde_json",
+ "sqlx",
  "uuid",
 ]
 
