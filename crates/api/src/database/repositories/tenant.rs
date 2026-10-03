@@ -18,6 +18,7 @@ pub enum TenantRepositoryError {
 }
 
 /// Репозиторий для управления тенантами.
+#[derive(Clone)]
 pub struct TenantRepository {
     pool: PgPool,
 }

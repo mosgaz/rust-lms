@@ -26,12 +26,21 @@ tokio = { workspace = true }
 
 # Serialization
 serde = { workspace = true }
+serde_json = { workspace = true }
 
 # UUID
 uuid = { workspace = true }
 
 # DateTime
 chrono = { workspace = true }
+
+# HTTP framework
+axum = { workspace = true, features = ["macros"] }
+tower = { workspace = true }
+tower-http = { workspace = true, features = ["cors", "trace"] }
+
+# HTTP types
+http = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

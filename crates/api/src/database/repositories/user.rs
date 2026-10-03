@@ -23,6 +23,7 @@ pub enum UserRepositoryError {
 }
 
 /// Репозиторий для управления пользователями.
+#[derive(Clone)]
 pub struct UserRepository {
     pool: PgPool,
 }

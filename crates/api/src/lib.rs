@@ -1,4 +1,3 @@
-
 // crates/api/src/lib.rs
 //! Серверное бэкенд-ядро обработки данных для rust-lms.
 //!
@@ -10,6 +9,7 @@
 #![deny(missing_docs)]
 
 pub mod database;
+pub mod http;
 
 // TODO: раскомментировать при наполнении реализации
 // pub mod content;
@@ -22,3 +22,4 @@ pub mod database;
 
 // Re-exports для удобства
 pub use database::{DatabasePool, RlsContext, TenantRepository, UserRepository};
+pub use http::create_router;
