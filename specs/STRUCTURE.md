@@ -90,7 +90,11 @@
 
 Серверное бэкенд-ядро обработки данных. **Импорт макросов Leptos сюда аппаратно запрещен.**
 
-- `src/database/` — менеджер пула соединений SQLx и RLS-интерцептор (`set_config('app.current_tenant_id', $1, true)`, см. `CODING_STANDARDS.md` §2.1).
+- `src/database/` — менеджер пула соединений SQLx и RLS-интерцептор:
+  - `pool.rs` — `DatabasePool` с конфигурируемыми лимитами соединений.
+  - `rls.rs` — `RlsContext` для установки сессионной переменной `app.current_tenant_id` (см. `CODING_STANDARDS.md` §2.1 и ADR 2026.09.28-0001).
+  - `repositories/` — базовые репозитории (`TenantRepository`, `UserRepository`) с принудительным применением RLS-контекста в транзакциях.
+  - `entities/` — заглушка для будущих сгенерированных сущностей SeaORM (read-only типы).
 - `src/lrs/` — низкоуровневая обработка записей LRS (пакетный импорт в TimescaleDB или ClickHouse).
 - `src/etl/` — потоковые чанк-парсеры кастомного импорта пользователей (Custom ETL Mapper).
 - `src/scim/` — маппинг SCIM 2.0 (RFC 7643 / 7644) на внутренние сущности `users` / `batches` (см. `OPEN_API.md` §3.5).
