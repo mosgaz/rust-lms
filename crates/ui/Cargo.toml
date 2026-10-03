@@ -22,7 +22,8 @@ rust-lms-icons = { path = "../icons" }
 # icons = { version = "0.18.3", features = ["leptos"] }
 wasm-bindgen = { workspace = true }
 js-sys = "0.3.106"
-# web-sys = { workspace = true }
+web-sys = { workspace = true }
+time = { workspace = true }
 # gloo = { workspace = true }
 # serde = { workspace = true }
 # uuid = { workspace = true }

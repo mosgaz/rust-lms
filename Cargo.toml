@@ -45,13 +45,21 @@ leptos_axum = { version = "0.8" }
 tw_merge = { version = "0.1.21", features = ["variant"] }
 strum = { version = "0.28.0", features = ["derive"] }
 wasm-bindgen = "0.2"
-web-sys = { version = "0.3" }
 gloo = "0.11"
+# web-sys = { version = "0.3" }
+web-sys = { version = "0.3", default-features = false, features = [
+    "Clipboard", "console", "CssStyleDeclaration", "Document", "DomRect",
+    "DomTokenList", "DragEvent", "Element", "Event", "EventTarget", "Headers",
+    "HtmlElement", "HtmlInputElement", "InputEvent", "KeyboardEvent", "Location",
+    "MediaQueryList", "MouseEvent", "MutationObserver", "MutationObserverInit",
+    "MutationRecord", "Navigator", "Node", "NodeList", "Request", "RequestInit",
+    "RequestMode", "Response", "Storage", "Window",
+] }
 
 # --- Идентификаторы / время ---
 uuid = { version = "1", features = ["v4", "serde", "js"] }
 chrono = { version = "0.4", features = ["serde"] }
-time = { version = "0.3", features = ["serde", "formatting"] }
+time = { version = "0.3", features = ["serde", "formatting", "wasm-bindgen"] }
 
 # --- Ошибки / логирование ---
 thiserror = "2"

@@ -1,0 +1,74 @@
+// crates/ui/src/components/combobox.rs
+use leptos::prelude::*;
+use strum::{Display, EnumIter, IntoEnumIterator};
+
+use super::command::{
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+};
+use super::popover::{
+    Popover,
+    PopoverAlign,
+    PopoverContent,
+    PopoverTrigger,
+};
+use crate::icons::{ChevronsUpDown, Search};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumIter)]
+enum Language {
+    Rust,
+    JavaScript,
+    Ruby,
+    Python,
+}
+
+#[component]
+pub fn Combobox() -> impl IntoView {
+    let value_signal = RwSignal::new(None::<Language>);
+
+    view! {
+        <Popover align=PopoverAlign::Start>
+            <PopoverTrigger class="justify-between w-[200px]">
+                <span class="truncate">
+                    {move || value_signal.get().map(|l| l.to_string()).unwrap_or_else(|| "Select language...".into())}
+                </span>
+                <ChevronsUpDown class="ml-auto opacity-50 size-4" />
+            </PopoverTrigger>
+
+            <PopoverContent class="p-0 w-[200px]">
+                <Command>
+                    <div class="flex gap-2 items-center px-2 border-b">
+                        <Search class="size-4 text-muted-foreground shrink-0" />
+                        <CommandInput attr:placeholder="Search language..." />
+                    </div>
+                    <CommandList>
+                        <CommandEmpty>"No language found."</CommandEmpty>
+                        <CommandGroup>
+                            {Language::iter()
+                                .map(|language| {
+                                    let label = language.to_string();
+                                    let is_selected = Signal::derive(move || value_signal.get() == Some(language));
+                                    view! {
+                                        <CommandItem
+                                            value=label.clone()
+                                            selected=is_selected
+                                            on_select=Callback::new(move |_| {
+                                                value_signal.set(Some(language));
+                                            })
+                                        >
+                                            {label}
+                                        </CommandItem>
+                                    }
+                                })
+                                .collect_view()}
+                        </CommandGroup>
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    }
+}
