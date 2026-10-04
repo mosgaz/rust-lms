@@ -55,6 +55,7 @@ pub use components::charts::*;
 pub use components::chat::*;
 pub use components::checkbox::*;
 pub use components::chips::*;
+pub use components::collapsible::*;
 pub use components::combobox::*;
 pub use components::command::*;
 pub use components::context_menu::*;
@@ -153,6 +154,7 @@ pub mod prelude {
     pub use crate::components::chat::*;
     pub use crate::components::checkbox::*;
     pub use crate::components::chips::*;
+    pub use crate::components::collapsible::*;
     pub use crate::components::combobox::*;
     pub use crate::components::command::*;
     pub use crate::components::context_menu::*;

@@ -23,6 +23,7 @@ pub mod charts;
 pub mod chat;
 pub mod checkbox;
 pub mod chips;
+pub mod collapsible;
 pub mod combobox;
 pub mod command;
 pub mod context_menu;
