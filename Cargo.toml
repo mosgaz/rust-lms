@@ -59,6 +59,7 @@ web-sys = { version = "0.3", default-features = false, features = [
     "MutationRecord", "Navigator", "Node", "NodeList", "Request", "RequestInit",
     "RequestMode", "Response", "Storage", "Window",
 ] }
+heck = "0.5"
 
 # --- Идентификаторы / время ---
 uuid = { version = "1", features = ["v4", "serde", "js"] }
