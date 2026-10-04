@@ -1,3 +1,4 @@
+pub mod use_can_scroll_vertical;
 pub mod use_card_carousel;
 pub mod use_cell_edit;
 pub mod use_data_scrolled;
