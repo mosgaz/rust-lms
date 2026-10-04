@@ -8,6 +8,7 @@ pub extern crate tw_merge;
 // Объявление внутренних модулей библиотеки
 pub mod constants;
 pub mod components;
+pub mod charts;
 pub mod hooks;
 pub mod layouts;
 pub mod utils;
