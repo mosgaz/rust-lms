@@ -61,6 +61,7 @@ pub mod mask;
 pub mod menubar;
 pub mod message;
 pub mod multi_select;
+pub mod navigation_menu;
 pub mod pagination;
 pub mod popover;
 pub mod pressable;

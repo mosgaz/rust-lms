@@ -93,6 +93,7 @@ pub use components::mask::*;
 pub use components::menubar::*;
 pub use components::message::*;
 pub use components::multi_select::*;
+pub use components::navigation_menu::*;
 pub use components::pagination::*;
 pub use components::popover::*;
 pub use components::pressable::*;
@@ -192,6 +193,7 @@ pub mod prelude {
     pub use crate::components::menubar::*;
     pub use crate::components::message::*;
     pub use crate::components::multi_select::*;
+    pub use crate::components::navigation_menu::*;
     pub use crate::components::pagination::*;
     pub use crate::components::popover::*;
     pub use crate::components::pressable::*;
