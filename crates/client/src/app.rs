@@ -35,6 +35,8 @@ use crate::student::pages::dashboard::StudentDashboard;
 use crate::admin::pages::profile::AdminProfile;
 use crate::student::pages::profile::StudentProfile;
 
+use crate::ui::hooks::use_scroll_lock;
+
 #[cfg(target_arch = "wasm32")]
 fn is_online_global() -> bool {
     web_sys::window()
@@ -60,6 +62,10 @@ pub fn App() -> impl IntoView {
         student_queue_size,
         admin_queue_size,
     });
+
+	// Register window.ScrollLock (Rust replacement for lock_scroll.js)
+    #[cfg(target_arch = "wasm32")]
+    use_scroll_lock::init();
 
     // 3. Асинхронное восстановление очередей из IndexedDB при старте
     #[cfg(target_arch = "wasm32")]
