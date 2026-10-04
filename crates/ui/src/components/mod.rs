@@ -84,5 +84,6 @@ pub mod table;
 pub mod tabs;
 pub mod textarea;
 pub mod theme_toggle;
+pub mod toast;
 pub mod toggle_group;
 pub mod tooltip;

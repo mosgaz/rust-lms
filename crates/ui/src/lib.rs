@@ -116,6 +116,7 @@ pub use components::table::*;
 pub use components::tabs::*;
 pub use components::textarea::*;
 pub use components::theme_toggle::*;
+pub use components::toast::*;
 pub use components::toggle_group::*;
 pub use components::tooltip::*;
 
@@ -213,6 +214,7 @@ pub mod prelude {
     pub use crate::components::tabs::*;
     pub use crate::components::textarea::*;
     pub use crate::components::theme_toggle::*;
+    pub use crate::components::toast::*;
     pub use crate::components::toggle_group::*;
     pub use crate::components::tooltip::*;
 
