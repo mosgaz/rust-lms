@@ -22,13 +22,18 @@ use crate::auth::layout::AuthLayout;
 use crate::auth::pages::login::Login;
 
 // Shared layouts
-use crate::shared::layouts::cpanel::CPanelLayout;
+// use crate::shared::layouts::cpanel___new::CPanelLayout;
+use crate::admin::AdminPanelLayout;
+use crate::student::StudentPanelLayout;
 
 // Admin
 use crate::admin::pages::dashboard::AdminDashboard;
 
 // Student
 use crate::student::pages::dashboard::StudentDashboard;
+
+use crate::admin::pages::profile::AdminProfile;
+use crate::student::pages::profile::StudentProfile;
 
 #[cfg(target_arch = "wasm32")]
 fn is_online_global() -> bool {
@@ -152,13 +157,23 @@ pub fn App() -> impl IntoView {
                     <AuthLayout><Login/></AuthLayout> 
                 } />
 
-                <ParentRoute path=path!("/admin") view=CPanelLayout>
-                    <Route path=path!("") view=AdminDashboard />
-                </ParentRoute>
+                <ParentRoute path=path!("/admin") view=AdminPanelLayout>
+					<Route path=path!("") view=AdminDashboard />
+					<Route path=path!("profile") view=AdminProfile />
+					// <Route path=path!("courses") view=AdminCourses />
+					// <Route path=path!("tests") view=AdminTests />
+					// <Route path=path!("users") view=AdminUsers />
+					// <Route path=path!("settings") view=AdminSettings />
+				</ParentRoute>
 
-                <ParentRoute path=path!("/student") view=CPanelLayout>
-                    <Route path=path!("") view=StudentDashboard />
-                </ParentRoute>
+				<ParentRoute path=path!("/student") view=StudentPanelLayout>
+					<Route path=path!("") view=StudentDashboard />
+					<Route path=path!("profile") view=StudentProfile />
+					// <Route path=path!("my-courses") view=StudentMyCourses />
+					// <Route path=path!("schedule") view=StudentSchedule />
+					// <Route path=path!("grades") view=StudentGrades />
+					// <Route path=path!("settings") view=StudentSettings />
+				</ParentRoute>
             </Routes>
         </Router>
     }

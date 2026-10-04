@@ -42,7 +42,7 @@ sea-orm = { version = "1", default-features = false, features = ["sqlx-postgres"
 
 # --- Фронтенд ---
 # leptos = { version = "0.7", features = ["csr", "ssr"] }
-leptos = { version = "0.8.20" }
+leptos = { version = "0.8.20", features = ["csr"] }
 leptos_router = "0.8.15"
 leptos_meta = "0.8.6"
 leptos_axum = { version = "0.8" }
