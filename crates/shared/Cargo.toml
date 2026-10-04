@@ -1,3 +1,4 @@
+# crates/shared/Cargo.toml
 [package]
 name = "rust-lms-shared"
 version.workspace = true
@@ -10,5 +11,9 @@ description = "Плоские DTO, сущности, контракты обме
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-sqlx = { version = "0.8", features = ["postgres", "uuid", "runtime-tokio"] }
 uuid = { version = "1.10", features = ["serde", "v4"] }
+
+sqlx = { version = "0.8", features = ["postgres", "uuid", "runtime-tokio"], optional = true }
+
+[features]
+server = ["dep:sqlx"]

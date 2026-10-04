@@ -10,7 +10,7 @@ authors.workspace = true
 description = "Серверное ядро бизнес-логики: PostgreSQL + RLS, LRS, SCIM, ETL, license, features, SBOM"
 
 [dependencies]
-rust-lms-shared = { path = "../shared" }
+rust-lms-shared = { path = "../shared", features = ["server"] }
 
 # Database
 sqlx = { workspace = true }

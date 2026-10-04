@@ -14,7 +14,7 @@ name = "rust-lms-server"
 path = "src/main.rs"
 
 [dependencies]
-rust-lms-shared = { path = "../shared" }
+rust-lms-shared = { path = "../shared", features = ["server"] }
 rust-lms-api = { path = "../api" }
 
 # Async runtime

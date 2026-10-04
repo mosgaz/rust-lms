@@ -28,7 +28,7 @@ ssr = [
 
 [dependencies]
 # 1. Обновленные имена локальных зависимостей
-rust-lms-shared = { path = "../shared" }
+# rust-lms-shared = { path = "../shared" }
 rust-lms-ui = { path = "../ui" }
 rust-lms-icons = { path = "../icons" }
 

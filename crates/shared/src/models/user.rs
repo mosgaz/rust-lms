@@ -1,6 +1,5 @@
 // crates/shared/src/models/user.rs
 use serde::{Deserialize, Serialize};
-use sqlx::Type;
 use std::fmt;
 use uuid::Uuid;
 
@@ -10,12 +9,8 @@ use super::tenant::TenantId;
 ///
 /// Используется newtype-паттерн для типобезопасности и предотвращения
 /// перепутывания идентификаторов разных сущностей.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
-#[sqlx(transparent)]
-pub struct UserId(
-    /// Внутренний UUID идентификатора.
-    pub Uuid,
-);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct UserId(pub Uuid);
 
 impl UserId {
     /// Генерирует новый случайный идентификатор пользователя (UUID v4).
@@ -37,15 +32,37 @@ impl fmt::Display for UserId {
     }
 }
 
+// --- Серверные реализации sqlx ---
+#[cfg(feature = "server")]
+impl sqlx::Type<sqlx::Postgres> for UserId {
+    fn type_info() -> sqlx::postgres::PgTypeInfo {
+        <Uuid as sqlx::Type<sqlx::Postgres>>::type_info()
+    }
+}
+
+#[cfg(feature = "server")]
+impl<'r> sqlx::Decode<'r, sqlx::Postgres> for UserId {
+    fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
+        let inner = <Uuid as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
+        Ok(UserId(inner))
+    }
+}
+
+#[cfg(feature = "server")]
+impl<'q> sqlx::Encode<'q, sqlx::Postgres> for UserId {
+    fn encode_by_ref(
+        &self,
+        buf: &mut sqlx::postgres::PgArgumentBuffer,
+    ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
+        <Uuid as sqlx::Encode<sqlx::Postgres>>::encode_by_ref(&self.0, buf)
+    }
+}
+
 /// DTO пользователя для обмена данными между слоями.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
-    /// Уникальный идентификатор пользователя.
     pub id: UserId,
-    /// Идентификатор тенанта, к которому принадлежит пользователь (строгая изоляция).
     pub tenant_id: TenantId,
-    /// Электронная почта пользователя.
     pub email: String,
-    /// Флаг активности пользователя.
     pub is_active: bool,
 }
