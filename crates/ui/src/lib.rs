@@ -35,6 +35,7 @@ pub use layouts::wrap::WrapLayout;
 pub use components::accordion::*;
 pub use components::action_bar::*;
 pub use components::alert_dialog::*;
+pub use components::auto_form::*;
 pub use components::avatar::*;
 pub use components::animate::*;
 pub use components::aspect_ratio::*;
@@ -138,6 +139,7 @@ pub mod prelude {
     pub use crate::components::animate::*;
     pub use crate::components::aspect_ratio::*;
     pub use crate::components::attachment::*;
+    pub use crate::components::auto_form::*;
     pub use crate::components::avatar::*;
     pub use crate::components::badge::*;
     pub use crate::components::bento_grid::*;
