@@ -1,3 +1,4 @@
+// crates/ui/src/components/accordion.rs
 use crate::icons::ChevronDown;
 use leptos::prelude::*;
 use crate::clx;
@@ -11,7 +12,7 @@ mod components {
     clx! {AccordionItem, div, "w-full [&:has(>input:checked)>label>svg:last-child]:rotate-180"}
     clx! {AccordionTitle, h4, "text-sm font-medium"}
     clx! {AccordionHeader, div, "flex gap-2 items-center [&_svg:not([class*='size-'])]:size-4"}
-    clx! {RootContent, article, "grid overflow-hidden transition-all duration-400 grid-rows-[0fr] peer-checked:grid-rows-[1fr]"}
+    clx! {AccordionContentRoot, article, "grid overflow-hidden transition-all duration-400 grid-rows-[0fr] peer-checked:grid-rows-[1fr]"}
     clx! {AccordionDescription, p, "text-muted-foreground text-sm"}
     clx! {AccordionLink, a, "grid gap-2.5 items-center p-2 grid-cols-[auto_1fr] [&_svg:not([class*='size-'])]:size-4 hover:bg-muted"}
 }
@@ -30,12 +31,12 @@ pub fn AccordionContent(
     let merged_class = tw_merge!("p-3 pt-0", class);
 
     view! {
-        <RootContent>
+        <AccordionContentRoot>
             // * Used for the animation using grid CSS trick.
             <div data-name="__AccordionContentInner" class="min-h-[0]">
                 <div class=merged_class>{children()}</div>
             </div>
-        </RootContent>
+        </AccordionContentRoot>
     }
 }
 
