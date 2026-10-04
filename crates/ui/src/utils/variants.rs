@@ -98,6 +98,7 @@ macro_rules! variants {
         }
     ) => {
         $crate::paste::paste! {
+            #[allow(unused_imports)]
             use $crate::tw_merge::*;
 
             // Generate the main TwClass struct
@@ -181,6 +182,7 @@ macro_rules! variants {
         }
     ) => {
         $crate::paste::paste! {
+            #[allow(unused_imports)]
             use $crate::tw_merge::*;
 
             #[derive(TwClass, Clone, Copy)]
@@ -276,6 +278,7 @@ macro_rules! variants {
         }
     ) => {
         $crate::paste::paste! {
+            #[allow(unused_imports)]
             use $crate::tw_merge::*;
 
             #[derive(TwClass, Clone, Copy)]
@@ -355,6 +358,7 @@ macro_rules! variants {
         }
     ) => {
         $crate::paste::paste! {
+            #[allow(unused_imports)]
             use $crate::tw_merge::*;
 
             // Generate the main TwClass struct
@@ -404,6 +408,7 @@ macro_rules! variants {
         }
     ) => {
         $crate::paste::paste! {
+            #[allow(unused_imports)]
             use $crate::tw_merge::*;
 
             #[derive(TwClass, Clone, Copy)]
@@ -439,6 +444,7 @@ macro_rules! variants {
         }
     ) => {
         $crate::paste::paste! {
+            #[allow(unused_imports)]
             use $crate::tw_merge::*;
 
             #[derive(TwClass, Clone, Copy)]

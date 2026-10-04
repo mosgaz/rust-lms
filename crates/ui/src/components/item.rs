@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use crate::{clx, variants};
 use tw_merge::tw_merge;
 
-use crate::ui::separator::Separator;
+use crate::components::separator::Separator;
 
 mod components {
     use super::*;
