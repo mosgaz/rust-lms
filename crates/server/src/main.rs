@@ -62,9 +62,8 @@ async fn main() {
     tracing::info!("JWT configuration loaded");
 
     // Создание и настройка Axum-роутера.
-    let app: Router = create_router(pool, jwt_config)
-        .layer(TraceLayer::new_for_http())
-        .into();
+    let app: Router = create_router(pool.inner().clone(), jwt_config)
+        .layer(TraceLayer::new_for_http());
 
     // Привязка к адресу.
     let addr = SocketAddr::new(

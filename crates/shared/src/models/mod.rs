@@ -1,10 +1,16 @@
 // crates/shared/src/models/mod.rs
 //! Базовые модели предметной области LMS (сущности).
 
+/// Потоки (Batches).
+pub mod batch;
+/// Зачисления в потоки (Batch Enrollments).
+pub mod batch_enrollment;
 /// Критерии завершения курса.
 pub mod completion;
 /// Модель курса.
 pub mod course;
+/// Зачисления на курсы (Course Enrollments).
+pub mod course_enrollment;
 /// Учётные данные личности.
 pub mod credentials;
 /// Глобальная личность.
@@ -18,8 +24,11 @@ pub mod tenant;
 /// Модель связи личности с тенантом.
 pub mod user;
 
+pub use batch::{Batch, BatchId, BatchStatus};
+pub use batch_enrollment::{BatchEnrollment, BatchEnrollmentId, BatchRole, EnrollmentStatus};
 pub use completion::{CompletionCriteria, CompletionCriteriaError, CompletionMode, CompletionRule};
 pub use course::{Course, CourseId};
+pub use course_enrollment::{CourseEnrollment, CourseEnrollmentId};
 pub use credentials::IdentityCredentials;
 pub use identity::{Identity, IdentityId};
 pub use lesson_progress::{
