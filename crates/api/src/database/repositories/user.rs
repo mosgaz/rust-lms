@@ -1,10 +1,11 @@
 // crates/api/src/database/repositories/user.rs
-//! Репозиторий для работы с сущностью User и Credentials.
+//! Репозиторий для работы с сущностью User (связь личности с тенантом).
 //!
-//! Содержит методы для CRUD-операций над пользователями, а также для работы
-//! с учётными данными (email + password_hash) при аутентификации.
+//! User — это не человек, а роль личности в конкретном тенанте.
+//! Один и тот же человек (Identity) может иметь несколько записей User
+//! в разных тенантах.
 
-use rust_lms_shared::{Credentials, TenantId, User, UserId};
+use rust_lms_shared::{IdentityId, TenantId, User, UserId};
 use sqlx::FromRow;
 use sqlx::PgPool;
 use thiserror::Error;
@@ -20,12 +21,12 @@ pub enum UserRepositoryError {
     /// Пользователь не найден.
     #[error("user not found: {0}")]
     NotFound(UserId),
-    /// Пользователь с таким email уже существует в тенанте.
-    #[error("user with email '{email}' already exists in tenant {tenant_id}")]
-    EmailAlreadyExists {
-        /// Электронная почта, которая уже занята.
-        email: String,
-        /// Идентификатор тенанта, в котором произошла коллизия.
+    /// Пользователь с таким identity_id уже существует в тенанте.
+    #[error("user with identity_id '{identity_id}' already exists in tenant {tenant_id}")]
+    IdentityAlreadyExists {
+        /// Идентификатор личности.
+        identity_id: IdentityId,
+        /// Идентификатор тенанта.
         tenant_id: TenantId,
     },
     /// Ошибка установки RLS-контекста.
@@ -33,44 +34,37 @@ pub enum UserRepositoryError {
     RlsError(#[from] RlsError),
 }
 
-/// Репозиторий для управления пользователями.
+/// Репозиторий для управления записями User.
 #[derive(Clone)]
 pub struct UserRepository {
     pool: PgPool,
 }
 
 impl UserRepository {
-    /// Создает новый репозиторий User.
+    /// Создаёт новый репозиторий User.
     #[must_use]
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 
-    /// Создаёт нового пользователя с паролем (хэш Argon2id).
-    ///
-    /// # Arguments
-    ///
-    /// * `tenant_id` — идентификатор тенанта для RLS-контекста.
-    /// * `email` — электронная почта пользователя (уникальна в рамках тенанта).
-    /// * `password_hash` — PHC-хэш пароля в формате `$argon2id$...`.
+    /// Создаёт новую запись User (связь личности с тенантом).
     ///
     /// # Errors
     ///
-    /// Возвращает `UserRepositoryError::EmailAlreadyExists`, если пользователь
-    /// с таким email уже существует в тенанте.
-    pub async fn create_with_password(
+    /// Возвращает `UserRepositoryError::IdentityAlreadyExists`, если эта личность
+    /// уже имеет запись в данном тенанте.
+    pub async fn create(
         &self,
         tenant_id: TenantId,
-        email: &str,
-        password_hash: &str,
+        identity_id: IdentityId,
     ) -> Result<User, UserRepositoryError> {
         let user_id = UserId::new();
 
         tracing::info!(
             user_id = %user_id,
             tenant_id = %tenant_id,
-            %email,
-            "Creating new user with password"
+            identity_id = %identity_id,
+            "Creating new user record"
         );
 
         let mut tx = self.pool.begin().await?;
@@ -79,27 +73,23 @@ impl UserRepository {
         let rls_context = RlsContext::new(tenant_id);
         rls_context.apply(&mut *tx).await?;
 
-        // TODO(migration): перейти на sqlx::query_as! с compile-time проверкой
-        // после поднятия PostgreSQL и применения миграций (см. CODING_STANDARDS.md §2.4).
         let row: UserRow = sqlx::query_as(
             r#"
-            INSERT INTO users (id, tenant_id, email, password_hash, is_active)
-            VALUES ($1, $2, $3, $4, true)
-            RETURNING id, tenant_id, email, is_active
+            INSERT INTO users (id, tenant_id, identity_id, is_active)
+            VALUES ($1, $2, $3, true)
+            RETURNING id, tenant_id, identity_id, is_active
             "#,
         )
         .bind(user_id.0)
         .bind(tenant_id.0)
-        .bind(email)
-        .bind(password_hash)
+        .bind(identity_id.0)
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| {
-            // Обработка нарушения уникальности (tenant_id, email)
             if let sqlx::Error::Database(ref db_err) = e {
                 if db_err.code().as_deref() == Some("23505") {
-                    return UserRepositoryError::EmailAlreadyExists {
-                        email: email.to_string(),
+                    return UserRepositoryError::IdentityAlreadyExists {
+                        identity_id,
                         tenant_id,
                     };
                 }
@@ -112,71 +102,16 @@ impl UserRepository {
         Ok(User {
             id: user_id,
             tenant_id,
-            email: row.email,
+            identity_id,
             is_active: row.is_active,
         })
     }
 
-    /// Получает учётные данные пользователя по email для аутентификации.
-    ///
-    /// **Важно:** перед вызовом метода устанавливается RLS-контекст,
-    /// поэтому поиск происходит строго в рамках указанного тенанта.
-    ///
-    /// # Arguments
-    ///
-    /// * `tenant_id` — идентификатор тенанта для RLS-контекста.
-    /// * `email` — электронная почта пользователя.
+    /// Получает запись User по идентификатору.
     ///
     /// # Errors
     ///
-    /// Возвращает `UserRepositoryError::NotFound`, если пользователь не найден.
-    pub async fn find_credentials_by_email(
-        &self,
-        tenant_id: TenantId,
-        email: &str,
-    ) -> Result<Credentials, UserRepositoryError> {
-        tracing::debug!(
-            %email,
-            tenant_id = %tenant_id,
-            "Fetching credentials by email"
-        );
-
-        let mut tx = self.pool.begin().await?;
-
-        // Устанавливаем RLS-контекст
-        let rls_context = RlsContext::new(tenant_id);
-        rls_context.apply(&mut *tx).await?;
-
-        // TODO(migration): перейти на sqlx::query_as! с compile-time проверкой
-        // после поднятия PostgreSQL и применения миграций (см. CODING_STANDARDS.md §2.4).
-        let row: CredentialsRow = sqlx::query_as(
-            r#"
-            SELECT id, tenant_id, email, password_hash, is_active
-            FROM users
-            WHERE email = $1 AND is_active = true
-            "#,
-        )
-        .bind(email)
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or_else(|| UserRepositoryError::NotFound(UserId::default()))?;
-
-        tx.commit().await?;
-
-        Ok(Credentials {
-            user_id: UserId(row.id),
-            tenant_id: TenantId(row.tenant_id),
-            email: row.email,
-            password_hash: row.password_hash,
-            is_active: row.is_active,
-        })
-    }
-
-    /// Получает пользователя по идентификатору.
-    ///
-    /// # Errors
-    ///
-    /// Возвращает `UserRepositoryError::NotFound`, если пользователь не найден.
+    /// Возвращает `UserRepositoryError::NotFound`, если запись не найдена.
     pub async fn find_by_id(
         &self,
         tenant_id: TenantId,
@@ -190,11 +125,9 @@ impl UserRepository {
         let rls_context = RlsContext::new(tenant_id);
         rls_context.apply(&mut *tx).await?;
 
-        // TODO(migration): перейти на sqlx::query_as! с compile-time проверкой
-        // после поднятия PostgreSQL и применения миграций (см. CODING_STANDARDS.md §2.4).
         let row: UserRow = sqlx::query_as(
             r#"
-            SELECT id, tenant_id, email, is_active
+            SELECT id, tenant_id, identity_id, is_active
             FROM users
             WHERE id = $1
             "#,
@@ -209,102 +142,97 @@ impl UserRepository {
         Ok(User {
             id: user_id,
             tenant_id,
-            email: row.email,
+            identity_id: IdentityId(row.identity_id),
             is_active: row.is_active,
         })
     }
 
-    /// Получает пользователя по email.
+    /// Получает список активных тенантов для данной личности.
+    ///
+    /// Используется при логине для определения доступных тенантов.
     ///
     /// # Errors
     ///
-    /// Возвращает `UserRepositoryError::NotFound`, если пользователь не найден.
-    pub async fn find_by_email(
+    /// Возвращает `UserRepositoryError`, если не удалось выполнить запрос.
+    pub async fn find_active_tenants_for_identity(
         &self,
-        tenant_id: TenantId,
-        email: &str,
-    ) -> Result<User, UserRepositoryError> {
-        tracing::debug!(%email, tenant_id = %tenant_id, "Fetching user by email");
+        identity_id: IdentityId,
+    ) -> Result<Vec<TenantId>, UserRepositoryError> {
+        tracing::debug!(identity_id = %identity_id, "Fetching active tenants for identity");
 
-        let mut tx = self.pool.begin().await?;
-
-        // Устанавливаем RLS-контекст
-        let rls_context = RlsContext::new(tenant_id);
-        rls_context.apply(&mut *tx).await?;
-
-        // TODO(migration): перейти на sqlx::query_as! с compile-time проверкой
-        // после поднятия PostgreSQL и применения миграций (см. CODING_STANDARDS.md §2.4).
-        let row: UserRow = sqlx::query_as(
+        let rows: Vec<TenantIdRow> = sqlx::query_as(
             r#"
-            SELECT id, tenant_id, email, is_active
-            FROM users
-            WHERE email = $1
+            SELECT u.tenant_id
+            FROM users u
+            JOIN tenants t ON u.tenant_id = t.id
+            WHERE u.identity_id = $1 AND u.is_active = true AND t.is_active = true
             "#,
         )
-        .bind(email)
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or_else(|| UserRepositoryError::NotFound(UserId::default()))?;
+        .bind(identity_id.0)
+        .fetch_all(&self.pool)
+        .await?;
 
-        tx.commit().await?;
+        Ok(rows.into_iter().map(|r| TenantId(r.tenant_id)).collect())
+    }
 
-        Ok(User {
-            id: UserId(row.id),
-            tenant_id,
-            email: row.email,
-            is_active: row.is_active,
-        })
+    /// Проверяет, активна ли запись User для данной личности в указанном тенанте.
+    ///
+    /// # Errors
+    ///
+    /// Возвращает `UserRepositoryError`, если не удалось выполнить запрос.
+    pub async fn is_user_active_in_tenant(
+        &self,
+        identity_id: IdentityId,
+        tenant_id: TenantId,
+    ) -> Result<bool, UserRepositoryError> {
+        tracing::debug!(
+            identity_id = %identity_id,
+            tenant_id = %tenant_id,
+            "Checking if user is active in tenant"
+        );
+
+        let row: Option<ActiveRow> = sqlx::query_as(
+            r#"
+            SELECT is_active
+            FROM users
+            WHERE identity_id = $1 AND tenant_id = $2
+            "#,
+        )
+        .bind(identity_id.0)
+        .bind(tenant_id.0)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| r.is_active).unwrap_or(false))
     }
 }
 
-/// Внутренняя структура для маппинга результатов запросов (без password_hash).
+/// Внутренняя структура для маппинга User из БД.
 #[derive(Debug, FromRow)]
 struct UserRow {
+    #[allow(dead_code)]
     id: uuid::Uuid,
     #[allow(dead_code)]
     tenant_id: uuid::Uuid,
-    email: String,
+    identity_id: uuid::Uuid,
     is_active: bool,
 }
 
-/// Внутренняя структура для маппинга Credentials из БД.
+/// Внутренняя структура для маппинга tenant_id.
 #[derive(Debug, FromRow)]
-struct CredentialsRow {
-    id: uuid::Uuid,
+struct TenantIdRow {
     tenant_id: uuid::Uuid,
-    email: String,
-    password_hash: String,
+}
+
+/// Внутренняя структура для маппинга is_active.
+#[derive(Debug, FromRow)]
+struct ActiveRow {
     is_active: bool,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Unit-тесты для маппинга структур (не требуют БД).
-
-    #[test]
-    fn test_user_row_mapping() {
-        // Проверяем, что структура UserRow корректно определена
-        let _row = UserRow {
-            id: uuid::Uuid::new_v4(),
-            tenant_id: uuid::Uuid::new_v4(),
-            email: "test@example.com".to_string(),
-            is_active: true,
-        };
-    }
-
-    #[test]
-    fn test_credentials_row_mapping() {
-        // Проверяем, что структура CredentialsRow корректно определена
-        let _row = CredentialsRow {
-            id: uuid::Uuid::new_v4(),
-            tenant_id: uuid::Uuid::new_v4(),
-            email: "test@example.com".to_string(),
-            password_hash: "$argon2id$v=19$m=19456,t=2,p=1$placeholder".to_string(),
-            is_active: true,
-        };
-    }
 
     #[test]
     fn test_error_display_not_found() {
@@ -315,14 +243,31 @@ mod tests {
     }
 
     #[test]
-    fn test_error_display_email_exists() {
+    fn test_error_display_identity_exists() {
         let tenant_id = TenantId::new();
-        let err = UserRepositoryError::EmailAlreadyExists {
-            email: "test@example.com".to_string(),
+        let identity_id = IdentityId::new();
+        let err = UserRepositoryError::IdentityAlreadyExists {
+            identity_id,
             tenant_id,
         };
         let msg = err.to_string();
-        assert!(msg.contains("test@example.com"));
         assert!(msg.contains("already exists"));
+    }
+
+    #[test]
+    fn test_user_row_mapping() {
+        let _row = UserRow {
+            id: uuid::Uuid::new_v4(),
+            tenant_id: uuid::Uuid::new_v4(),
+            identity_id: uuid::Uuid::new_v4(),
+            is_active: true,
+        };
+    }
+
+    #[test]
+    fn test_tenant_id_row_mapping() {
+        let _row = TenantIdRow {
+            tenant_id: uuid::Uuid::new_v4(),
+        };
     }
 }

@@ -1,15 +1,28 @@
 // crates/shared/src/models/tenant.rs
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use uuid::Uuid;
+
+#[cfg(feature = "server")]
+use sqlx::Type;
 
 /// Уникальный идентификатор арендатора (тенанта).
+///
+/// Используется newtype-паттерн для типобезопасности и предотвращения
+/// перепутывания идентификаторов разных сущностей.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TenantId(pub uuid::Uuid);
+#[cfg_attr(feature = "server", derive(Type))]
+#[cfg_attr(feature = "server", sqlx(transparent))]
+pub struct TenantId(
+    /// Внутренний UUID идентификатора.
+    pub Uuid,
+);
 
 impl TenantId {
+    /// Генерирует новый случайный идентификатор тенанта (UUID v4).
     #[must_use]
     pub fn new() -> Self {
-        Self(uuid::Uuid::new_v4())
+        Self(Uuid::new_v4())
     }
 }
 
@@ -25,37 +38,15 @@ impl fmt::Display for TenantId {
     }
 }
 
-// --- Серверные реализации ---
-#[cfg(feature = "server")]
-impl sqlx::Type<sqlx::Postgres> for TenantId {
-    fn type_info() -> sqlx::postgres::PgTypeInfo {
-        <uuid::Uuid as sqlx::Type<sqlx::Postgres>>::type_info()
-    }
-}
-
-#[cfg(feature = "server")]
-impl<'r> sqlx::Decode<'r, sqlx::Postgres> for TenantId {
-    fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
-        let inner = <uuid::Uuid as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
-        Ok(TenantId(inner))
-    }
-}
-
-#[cfg(feature = "server")]
-impl<'q> sqlx::Encode<'q, sqlx::Postgres> for TenantId {
-    fn encode_by_ref(
-        &self,
-        buf: &mut sqlx::postgres::PgArgumentBuffer,
-    ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
-        <uuid::Uuid as sqlx::Encode<sqlx::Postgres>>::encode_by_ref(&self.0, buf)
-    }
-}
-
 /// DTO арендатора (тенанта) для обмена данными между слоями.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tenant {
+    /// Уникальный идентификатор тенанта.
     pub id: TenantId,
+    /// Уникальный субдомен или ключ тенанта.
     pub slug: String,
+    /// Отображаемое название организации.
     pub name: String,
+    /// Флаг активности тенанта.
     pub is_active: bool,
 }

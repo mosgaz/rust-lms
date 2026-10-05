@@ -1,14 +1,12 @@
 // crates/api/src/auth/jwt.rs
 //! Управление JWT-токенами: генерация, валидация, claims.
 //!
-//! Токены содержат обязательный claim `tenant_id` для интеграции с RLS-интерцептором
-//! (ADR 2026.09.28-0001). Используются два типа токенов:
-//! - **Access token** — короткоживущий (15 мин), для авторизованных запросов.
-//! - **Refresh token** — долгоживущий (7 дней), для обновления access token.
+//! Токены содержат обязательный claim `tenant_id` (кроме Session токена) 
+//! для интеграции с RLS-интерцептором (ADR 2026.09.28-0001).
 
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
-use rust_lms_shared::{TenantId, UserId};
+use rust_lms_shared::{IdentityId, TenantId};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -16,7 +14,7 @@ use uuid::Uuid;
 /// Ошибки работы с JWT.
 #[derive(Debug, Error)]
 pub enum JwtError {
-    /// Не удалось сгенерировать токен.
+    /// Не удалось закодировать токен.
     #[error("failed to encode token: {0}")]
     EncodingFailed(#[from] jsonwebtoken::errors::Error),
     /// Токен невалиден (истёк, повреждён, неверная подпись).
@@ -25,7 +23,7 @@ pub enum JwtError {
     /// В токене отсутствует обязательный claim `tenant_id`.
     #[error("missing tenant_id claim in token")]
     MissingTenantId,
-    /// В токене отсутствует обязательный claim `sub` (user_id).
+    /// В токене отсутствует обязательный claim `sub`.
     #[error("missing sub claim in token")]
     MissingSubject,
 }
@@ -38,12 +36,14 @@ pub enum TokenType {
     Access,
     /// Долгоживущий refresh token для обновления access token.
     Refresh,
+    /// Короткоживущий session token для выбора тенанта (без tenant_id).
+    Session,
 }
 
 /// Claims (полезная нагрузка) JWT-токена.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JwtClaims {
-    /// Subject — идентификатор пользователя (UUID as string).
+    /// Subject — идентификатор личности (IdentityId as string).
     pub sub: String,
     /// Tenant ID — идентификатор арендатора (UUID as string) для RLS.
     pub tenant_id: String,
@@ -51,31 +51,25 @@ pub struct JwtClaims {
     pub iat: i64,
     /// Expiration — время истечения токена (Unix timestamp).
     pub exp: i64,
-    /// JWT ID — уникальный идентификатор токена (для revocation).
+    /// JWT ID — уникальный идентификатор токена.
     pub jti: String,
-    /// Тип токена (access/refresh).
+    /// Тип токена (access/refresh/session).
     pub token_type: TokenType,
 }
 
 impl JwtClaims {
-    /// Извлекает `UserId` из claim `sub`.
-    ///
-    /// # Errors
-    ///
-    /// Возвращает `JwtError::MissingSubject`, если claim отсутствует или невалиден.
-    pub fn user_id(&self) -> Result<UserId, JwtError> {
+    /// Извлекает `IdentityId` из claim `sub`.
+    pub fn identity_id(&self) -> Result<IdentityId, JwtError> {
         let uuid = Uuid::parse_str(&self.sub).map_err(|e| JwtError::InvalidToken(e.to_string()))?;
-        Ok(UserId(uuid))
+        Ok(IdentityId(uuid))
     }
 
     /// Извлекает `TenantId` из claim `tenant_id`.
-    ///
-    /// # Errors
-    ///
-    /// Возвращает `JwtError::MissingTenantId`, если claim отсутствует или невалиден.
     pub fn tenant_id(&self) -> Result<TenantId, JwtError> {
-        let uuid =
-            Uuid::parse_str(&self.tenant_id).map_err(|e| JwtError::InvalidToken(e.to_string()))?;
+        if self.tenant_id.is_empty() {
+            return Err(JwtError::MissingTenantId);
+        }
+        let uuid = Uuid::parse_str(&self.tenant_id).map_err(|e| JwtError::InvalidToken(e.to_string()))?;
         Ok(TenantId(uuid))
     }
 }
@@ -85,9 +79,9 @@ impl JwtClaims {
 pub struct JwtConfig {
     /// Секретный ключ для подписи токенов (HS256). Минимальная длина — 32 байта.
     pub secret: String,
-    /// Время жизни access token (в секундах). Рекомендуется 900 (15 мин).
+    /// Время жизни access token (в секундах).
     pub access_ttl_secs: i64,
-    /// Время жизни refresh token (в секундах). Рекомендуется 604800 (7 дней).
+    /// Время жизни refresh token (в секундах).
     pub refresh_ttl_secs: i64,
 }
 
@@ -95,14 +89,14 @@ impl Default for JwtConfig {
     fn default() -> Self {
         Self {
             secret: "change-me-in-production-min-32-bytes-long-secret!".to_string(),
-            access_ttl_secs: 900,        // 15 минут
-            refresh_ttl_secs: 604_800,   // 7 дней
+            access_ttl_secs: 900,
+            refresh_ttl_secs: 604_800,
         }
     }
 }
 
 /// Менеджер JWT-токенов.
-#[derive(Clone)] 
+#[derive(Clone)]
 pub struct JwtManager {
     encoding_key: EncodingKey,
     decoding_key: DecodingKey,
@@ -111,17 +105,9 @@ pub struct JwtManager {
 
 impl JwtManager {
     /// Создаёт новый JWT-менеджер с указанной конфигурацией.
-    ///
-    /// # Panics
-    ///
-    /// Паникует, если длина секрета менее 32 байт (недостаточно для HS256).
     #[must_use]
     pub fn new(config: JwtConfig) -> Self {
-        assert!(
-            config.secret.len() >= 32,
-            "JWT secret must be at least 32 bytes long for HS256 security"
-        );
-
+        assert!(config.secret.len() >= 32, "JWT secret must be at least 32 bytes long for HS256");
         let secret_bytes = config.secret.as_bytes();
         Self {
             encoding_key: EncodingKey::from_secret(secret_bytes),
@@ -130,39 +116,31 @@ impl JwtManager {
         }
     }
 
-    /// Генерирует access token для указанного пользователя и тенанта.
-    ///
-    /// # Errors
-    ///
-    /// Возвращает `JwtError`, если не удалось закодировать токен.
-    pub fn generate_access_token(
-        &self,
-        user_id: UserId,
-        tenant_id: TenantId,
-    ) -> Result<String, JwtError> {
-        self.generate_token(user_id, tenant_id, TokenType::Access, self.config.access_ttl_secs)
+    /// Генерирует access token для указанной личности и тенанта.
+    pub fn generate_access_token(&self, identity_id: IdentityId, tenant_id: TenantId) -> Result<String, JwtError> {
+        self.generate_token(identity_id, tenant_id, TokenType::Access, self.config.access_ttl_secs)
     }
 
-    /// Генерирует refresh token для указанного пользователя и тенанта.
-    ///
-    /// # Errors
-    ///
-    /// Возвращает `JwtError`, если не удалось закодировать токен.
-    pub fn generate_refresh_token(
-        &self,
-        user_id: UserId,
-        tenant_id: TenantId,
-    ) -> Result<String, JwtError> {
-        self.generate_token(user_id, tenant_id, TokenType::Refresh, self.config.refresh_ttl_secs)
+    /// Генерирует refresh token для указанной личности и тенанта.
+    pub fn generate_refresh_token(&self, identity_id: IdentityId, tenant_id: TenantId) -> Result<String, JwtError> {
+        self.generate_token(identity_id, tenant_id, TokenType::Refresh, self.config.refresh_ttl_secs)
+    }
+
+    /// Генерирует session token для выбора тенанта (без tenant_id, TTL 5 мин).
+    pub fn generate_session_token(&self, identity_id: IdentityId) -> Result<String, JwtError> {
+        let now = Utc::now();
+        let claims = JwtClaims {
+            sub: identity_id.0.to_string(),
+            tenant_id: String::new(),
+            iat: now.timestamp(),
+            exp: (now + Duration::seconds(300)).timestamp(),
+            jti: Uuid::new_v4().to_string(),
+            token_type: TokenType::Session,
+        };
+        encode(&Header::default(), &claims, &self.encoding_key).map_err(Into::into)
     }
 
     /// Валидирует токен и возвращает claims.
-    ///
-    /// Проверяет подпись, срок действия и обязательные claims.
-    ///
-    /// # Errors
-    ///
-    /// Возвращает `JwtError`, если токен невалиден.
     pub fn validate_token(&self, token: &str) -> Result<JwtClaims, JwtError> {
         let mut validation = Validation::default();
         validation.validate_exp = true;
@@ -172,34 +150,20 @@ impl JwtManager {
         let token_data = decode::<JwtClaims>(token, &self.decoding_key, &validation)
             .map_err(|e| JwtError::InvalidToken(e.to_string()))?;
 
-        // Проверяем наличие tenant_id
-        if token_data.claims.tenant_id.is_empty() {
-            return Err(JwtError::MissingTenantId);
-        }
-
         Ok(token_data.claims)
     }
 
-    /// Внутренний метод генерации токена.
-    fn generate_token(
-        &self,
-        user_id: UserId,
-        tenant_id: TenantId,
-        token_type: TokenType,
-        ttl_secs: i64,
-    ) -> Result<String, JwtError> {
+    fn generate_token(&self, identity_id: IdentityId, tenant_id: TenantId, token_type: TokenType, ttl_secs: i64) -> Result<String, JwtError> {
         let now = Utc::now();
         let claims = JwtClaims {
-            sub: user_id.0.to_string(),
+            sub: identity_id.0.to_string(),
             tenant_id: tenant_id.0.to_string(),
             iat: now.timestamp(),
             exp: (now + Duration::seconds(ttl_secs)).timestamp(),
             jti: Uuid::new_v4().to_string(),
             token_type,
         };
-
-        let token = encode(&Header::default(), &claims, &self.encoding_key)?;
-        Ok(token)
+        encode(&Header::default(), &claims, &self.encoding_key).map_err(Into::into)
     }
 }
 
@@ -218,32 +182,28 @@ mod tests {
     #[test]
     fn test_generate_and_validate_access_token() {
         let manager = test_manager();
-        let user_id = UserId::new();
+        let identity_id = IdentityId::new();
         let tenant_id = TenantId::new();
 
-        let token = manager
-            .generate_access_token(user_id, tenant_id)
-            .expect("token generation must succeed");
-
+        let token = manager.generate_access_token(identity_id, tenant_id).expect("token generation must succeed");
         let claims = manager.validate_token(&token).expect("validation must succeed");
 
-        assert_eq!(claims.user_id().unwrap(), user_id);
+        assert_eq!(claims.identity_id().unwrap(), identity_id);
         assert_eq!(claims.tenant_id().unwrap(), tenant_id);
         assert_eq!(claims.token_type, TokenType::Access);
     }
 
     #[test]
-    fn test_generate_and_validate_refresh_token() {
+    fn test_generate_and_validate_session_token() {
         let manager = test_manager();
-        let user_id = UserId::new();
-        let tenant_id = TenantId::new();
+        let identity_id = IdentityId::new();
 
-        let token = manager
-            .generate_refresh_token(user_id, tenant_id)
-            .expect("token generation must succeed");
-
+        let token = manager.generate_session_token(identity_id).expect("token generation must succeed");
         let claims = manager.validate_token(&token).expect("validation must succeed");
-        assert_eq!(claims.token_type, TokenType::Refresh);
+
+        assert_eq!(claims.identity_id().unwrap(), identity_id);
+        assert_eq!(claims.token_type, TokenType::Session);
+        assert!(claims.tenant_id().is_err());
     }
 
     #[test]
@@ -257,23 +217,16 @@ mod tests {
     fn test_validate_expired_token() {
         let manager = JwtManager::new(JwtConfig {
             secret: "test-secret-that-is-at-least-32-bytes-long!".to_string(),
-            access_ttl_secs: -120, // Токен "истёк" 2 минуты назад (с запасом на 60-секундный leeway)
+            access_ttl_secs: -120,
             refresh_ttl_secs: 604_800,
         });
 
-        let user_id = UserId::new();
+        let identity_id = IdentityId::new();
         let tenant_id = TenantId::new();
-
-        let token = manager
-            .generate_access_token(user_id, tenant_id)
-            .expect("token generation must succeed");
+        let token = manager.generate_access_token(identity_id, tenant_id).expect("token generation must succeed");
 
         let result = manager.validate_token(&token);
-        assert!(
-            matches!(result, Err(JwtError::InvalidToken(_))),
-            "Expected InvalidToken error for expired token, got: {:?}",
-            result
-        );
+        assert!(matches!(result, Err(JwtError::InvalidToken(_))));
     }
 
     #[test]

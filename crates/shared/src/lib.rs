@@ -4,23 +4,23 @@
 //! Крейт является framework-agnostic: не имеет зависимостей от веб-фреймворков,
 //! СУБД-драйверов (кроме `sqlx::Type` для типобезопасности идентификаторов)
 //! и UI-библиотек. Используется как общий язык между `api`, `client` и `server`.
+//!
+//! Архитектура Identity-First:
+//! - `Identity` — глобальная сущность (человек, email, пароль).
+//! - `User` — связь личности с тенантом (роль в конкретном тенанте).
 
 #![deny(missing_docs)]
 
-// pub mod dto;
+// TODO: раскомментировать при наполнении файлов реализацией
+// pub mod dto
 pub mod models;
 // pub mod xapi;
 
 // --- Flat re-exports для удобства импорта ---
 
-// Базовые идентификаторы и сущности
+// Базовые идентификаторы, сущности и учётные данные (только реализованные)
 pub use models::{
-    // Batch, BatchId, 
-	// Certificate, CertificateId, 
-	// Course, CourseId, 
-	// Program, ProgramId, 
-	Tenant, TenantId, 
-	User, UserId,
+    Identity, IdentityCredentials, IdentityId, Tenant, TenantId, User, UserId,
 };
 
 // DTO импорта и синхронизации

@@ -1,19 +1,35 @@
 // crates/shared/src/models/user.rs
+//! Модель связи личности с тенантом (User).
+//!
+//! User — это не человек, а **роль личности в конкретном тенанте**.
+//! Один и тот же человек (Identity) может иметь несколько записей User
+//! в разных тенантах.
+//!
+//! Архитектура Identity-First описана в ADR 2026.09.28-0001.
+
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
+use super::identity::IdentityId;
 use super::tenant::TenantId;
 
-/// Уникальный идентификатор пользователя.
+#[cfg(feature = "server")]
+use sqlx::Type;
+
+/// Уникальный идентификатор записи User (связи личности с тенантом).
 ///
-/// Используется newtype-паттерн для типобезопасности и предотвращения
-/// перепутывания идентификаторов разных сущностей.
+/// Используется newtype-паттерн для типобезопасности.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct UserId(pub Uuid);
+#[cfg_attr(feature = "server", derive(Type))]
+#[cfg_attr(feature = "server", sqlx(transparent))]
+pub struct UserId(
+    /// Внутренний UUID идентификатора.
+    pub Uuid,
+);
 
 impl UserId {
-    /// Генерирует новый случайный идентификатор пользователя (UUID v4).
+    /// Генерирует новый случайный идентификатор записи User (UUID v4).
     #[must_use]
     pub fn new() -> Self {
         Self(Uuid::new_v4())
@@ -32,37 +48,17 @@ impl fmt::Display for UserId {
     }
 }
 
-// --- Серверные реализации sqlx ---
-#[cfg(feature = "server")]
-impl sqlx::Type<sqlx::Postgres> for UserId {
-    fn type_info() -> sqlx::postgres::PgTypeInfo {
-        <Uuid as sqlx::Type<sqlx::Postgres>>::type_info()
-    }
-}
-
-#[cfg(feature = "server")]
-impl<'r> sqlx::Decode<'r, sqlx::Postgres> for UserId {
-    fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
-        let inner = <Uuid as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
-        Ok(UserId(inner))
-    }
-}
-
-#[cfg(feature = "server")]
-impl<'q> sqlx::Encode<'q, sqlx::Postgres> for UserId {
-    fn encode_by_ref(
-        &self,
-        buf: &mut sqlx::postgres::PgArgumentBuffer,
-    ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
-        <Uuid as sqlx::Encode<sqlx::Postgres>>::encode_by_ref(&self.0, buf)
-    }
-}
-
-/// DTO пользователя для обмена данными между слоями.
+/// DTO связи личности с тенантом для обмена данными между слоями.
+///
+/// Не содержит email или password_hash — эти данные принадлежат `Identity`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
+    /// Уникальный идентификатор записи User.
     pub id: UserId,
+    /// Идентификатор тенанта, в котором действует эта запись.
     pub tenant_id: TenantId,
-    pub email: String,
+    /// Идентификатор личности, к которой принадлежит эта запись.
+    pub identity_id: IdentityId,
+    /// Флаг активности записи в данном тенанте.
     pub is_active: bool,
 }

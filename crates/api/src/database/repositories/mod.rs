@@ -4,8 +4,10 @@
 //! Все операции записи выполняются через `sqlx::query_as` с ручным маппингом
 //! через derive-макрос `FromRow` (см. CODING_STANDARDS.md §2.4).
 
+pub mod identity;
 pub mod tenant;
 pub mod user;
 
+pub use identity::{IdentityRepository, IdentityRepositoryError};
 pub use tenant::{TenantRepository, TenantRepositoryError};
 pub use user::{UserRepository, UserRepositoryError};
