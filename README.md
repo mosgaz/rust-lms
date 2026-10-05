@@ -4,7 +4,7 @@
 
 > **Примечание об изоморфности.** Стек является изоморфным в части ядра приложения (SSR + WASM-гидратация на Leptos). Единственное исключение — исполнение **неверифицированных сторонних плагинов**, которое намеренно вынесено в браузерную песочницу `iframe`. Это архитектурное решение принято ради безопасной изоляции недоверенного кода и не нарушает изоморфности основного приложения.
 
-> **Текущий этап проекта.** Стадия проектирования и разработки документации. Кодовая база находится в начальной стадии; матрица готовности фич ведётся в [`specs/STATUS.md`](specs/STATUS.md).
+> **Текущий этап проекта.** Активная реализация серверного ядра (`api` + `server`). Внедрена Identity-First архитектура (ADR 2026.10.05-0011): глобальная личность (`identities`) + роли в тенантах (`users`), двухшаговая аутентификация с авто-выбором `preferred_tenant_id`. Матрица готовности фич ведётся в [`specs/STATUS.md`](specs/STATUS.md).
 
 * * *
 
@@ -33,12 +33,12 @@
 
 Проект разработан в виде монорепозитория, разделенного на пять специализированных микро-крейтов:
 
-  * `crates/shared` — плоские DTO (Data Transfer Object), сущности (Users, Courses, Batches), контракты обмена и xAPI JSON-LD структуры. **Framework-agnostic: ноль зависимостей от веб-фреймворков, СУБД и UI (только `serde`/`serde_json` для сериализации контрактов).**
+  * `crates/shared` — плоские DTO (Data Transfer Object), сущности (Identity, User, Tenant, Courses, Batches), контракты обмена и xAPI JSON-LD структуры. **Framework-agnostic: ноль зависимостей от веб-фреймворков, СУБД и UI (только `serde`/`serde_json` для сериализации контрактов).**
   * `crates/ui` — чистая библиотека переиспользуемых атомарных компонентов и блоков верстки дизайн-системы (Tailwind CSS, доступность по WCAG 2.2 AA, Fluent-локализация).
   * `crates/icons` — типизированная библиотека SVG-иконок дизайн-системы с поддержкой Leptos.
   * `crates/api` — серверное ядро бизнес-логики, слой взаимодействия с базами данных (PostgreSQL + RLS менеджер) и LRS-аналитика. **Без зависимостей от макросов Leptos.**
   * `crates/client` — изоморфное full-stack веб-приложение на Leptos. Отвечает за маршрутизацию, авторизацию и UI. Включает публичный сайт (`website`), студенческий кабинет (`student`) и лениво загружаемую панель управления (`cpanel`).
-  * `crates/server` — точка входа бэкенда хоста на Axum, инициализация СУБД пулов, раздача WASM-статики и запуск планировщиков Tokio.
+  * `crates/server` — точка входа бэкенда хоста на Axum, инициализация СУБД пулов, раздача WASM- статики и запуск планировщиков Tokio.
   * `crates/cli` — автономная CLI-утилита (`rust-lms`) для администрирования в Air-gapped (управление лицензиями, feature flags, conformance-тесты).
 
 * * *
@@ -55,3 +55,81 @@ cargo check --workspace --all-targets --all-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo fmt --all -- --check
 cargo test --workspace
+```
+
+* * *
+
+## 🧪 Тестирование
+
+### Unit-тесты (не требуют БД)
+
+Unit-тесты проверяют изолированные компоненты: хеширование паролей (Argon2id), генерацию/валидацию JWT, маппинг ошибок репозиториев и handlers, работу middleware.
+
+```bash
+# Запуск всех unit-тестов воркспейса
+cargo test --workspace --lib
+
+# Запуск unit-тестов конкретного крейта
+cargo test -p rust-lms-api --lib
+cargo test -p rust-lms-shared --lib
+
+# Запуск конкретного теста по имени
+cargo test -p rust-lms-api --lib test_error_display_invalid_credentials
+```
+
+**Покрытие:** ≥80% для модулей `auth/`, `database/repositories/`, `http/`.
+
+### Интеграционные тесты (требуют PostgreSQL)
+
+Интеграционные тесты проверяют полный HTTP-цикл: DTO → БД → REST → Axum-хост, включая Identity-First аутентификацию и RLS-изоляцию.
+
+**Предварительные требования:**
+
+  * PostgreSQL 15+ запущен и доступен
+  * Переменная окружения `DATABASE_URL` установлена и указывает на пустую или тестовую базу данных
+  * Пользователь БД имеет права `CREATE DATABASE` (макрос `#[sqlx::test]` автоматически создаёт временные БД для каждого теста)
+
+```bash
+# 1. Установка DATABASE_URL
+export DATABASE_URL="postgres://postgres:postgres@localhost:5432/rust_lms_test"
+
+# 2. Запуск интеграционных тестов API
+cargo test -p rust-lms-api --test integration_test
+
+# 3. Запуск всех тестов (unit + integration)
+cargo test --workspace
+```
+
+**Что проверяют интеграционные тесты (`crates/api/tests/integration_test.rs`):**
+
+  * ✅ **Авто-выбор тенанта** — если у `identity` установлен `preferred_tenant_id` и он активен, `POST /api/v1/auth/login` сразу возвращает финальные токены (`access_token` + `refresh_token`).
+  * ✅ **Двухшаговый поток** — если `preferred_tenant_id` отсутствует или невалиден, `login` возвращает `session_token` (TTL 5 мин) и список `available_tenants`; затем `POST /api/v1/auth/select-tenant` выдаёт финальные токены.
+  * ✅ **Обновление предпочтений** — после `select_tenant` поле `preferred_tenant_id` в таблице `identities` обновляется для бесшовного входа в следующий раз.
+  * ✅ **Защита от подмены `tenant_id`** — попытка выбрать тенант, к которому у личности нет доступа, отклоняется (401/403).
+  * ✅ **RLS-изоляция** — пользователь тенанта A не может получить данные пользователя тенанта B, даже имея валидный JWT (ожидаем 404 Not Found).
+  * ✅ **Неверные учётные данные** — неверный email/пароль возвращает 401 Unauthorized.
+  * ✅ **Refresh token flow** — `POST /api/v1/auth/refresh` выдаёт новую пару токенов без повторного ввода пароля.
+
+### Проверка качества кода
+
+Перед каждым коммитом обязательно прогоняйте полный набор проверок:
+
+```bash
+# Форматирование (должно быть чисто)
+cargo fmt --all -- --check
+
+# Линтер (все предупреждения — ошибки)
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+# Проверка компиляции всех целей
+cargo check --workspace --all-targets --all-features
+
+# Полная проверка (unit + integration тесты)
+cargo test --workspace
+```
+
+* * *
+
+## 📜 Лицензия
+
+См. файл `LICENSE` в корне репозитория.
