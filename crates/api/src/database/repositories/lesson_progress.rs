@@ -13,6 +13,7 @@ use rust_lms_shared::{
     LessonStatus, NodeId, TenantId, UserId,
 };
 use sqlx::{PgPool, Row};
+use uuid::Uuid;
 
 /// Ошибки репозитория прогресса обучения.
 #[derive(Debug, thiserror::Error)]
@@ -23,12 +24,15 @@ pub enum LessonProgressRepositoryError {
     /// Узел не найден.
     #[error("Node not found")]
     NodeNotFound,
-    /// Узел архивирован (мягко удалён).
+    /// Узел архивирован.
     #[error("Node is archived")]
     NodeArchived,
     /// Пользователь не зачислен в курс.
     #[error("User not enrolled in course")]
     NotEnrolled,
+    /// Курс уже завершён, обновление прогресса запрещено.
+    #[error("Course already completed")]
+    CourseAlreadyCompleted,
 }
 
 /// Результат обновления прогресса урока.
@@ -38,9 +42,9 @@ pub struct LessonProgressUpdateResult {
     pub lesson_progress: LessonProgress,
     /// Текущий прогресс курса (0.0–1.0).
     pub course_progress: f64,
-    /// Статус курса (active/completed).
+    /// Статус курса.
     pub course_status: String,
-    /// Было ли инициировано завершение курса этим запросом.
+    /// Было ли инициировано завершение курса.
     pub completion_triggered: bool,
 }
 
@@ -55,6 +59,34 @@ impl LessonProgressRepository {
     #[must_use]
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    /// Проверяет выполнение критериев завершения курса.
+    fn check_completion_criteria(
+        criteria: &CompletionCriteria,
+        course_progress: f64,
+        avg_quiz_score: Option<f64>,
+        completed_node_ids: &[Uuid],
+        total_lessons: i32,
+        completed_lessons: i32,
+    ) -> bool {
+        let results: Vec<bool> = criteria.rules.iter().map(|rule| {
+            match rule {
+                CompletionRule::MinProgress { value } => course_progress >= *value,
+                CompletionRule::MinAvgQuizScore { value } => {
+                    avg_quiz_score.map_or(false, |s| s >= *value)
+                }
+                CompletionRule::RequiredNodes { node_ids } => {
+                    node_ids.iter().all(|id| completed_node_ids.contains(&id.0))
+                }
+                CompletionRule::AllLessonsCompleted => completed_lessons == total_lessons,
+            }
+        }).collect();
+
+        match criteria.mode {
+            CompletionMode::AllOf => results.iter().all(|&r| r),
+            CompletionMode::AnyOf => results.iter().any(|&r| r),
+        }
     }
 
     /// Создает или обновляет прогресс урока, пересчитывает прогресс курса и проверяет критерии завершения.
@@ -75,7 +107,7 @@ impl LessonProgressRepository {
     ) -> Result<LessonProgressUpdateResult, LessonProgressRepositoryError> {
         let mut tx = self.pool.begin().await?;
 
-        // 1. Получаем информацию об узле
+        // 1. Информация об узле
         let node_info = sqlx::query(
             r#"SELECT course_id, metadata, is_archived FROM nodes WHERE id = $1 AND tenant_id = $2"#,
         )
@@ -85,7 +117,7 @@ impl LessonProgressRepository {
         .await?
         .map(|row| {
             (
-                row.get::<uuid::Uuid, _>("course_id"),
+                row.get::<Uuid, _>("course_id"),
                 row.get::<serde_json::Value, _>("metadata"),
                 row.get::<bool, _>("is_archived"),
             )
@@ -98,6 +130,7 @@ impl LessonProgressRepository {
 
         let course_id = CourseId(node_info.0);
         let metadata = node_info.1;
+        let node_weight = metadata.get("weight").and_then(|v| v.as_f64()).unwrap_or(1.0);
         let is_quiz = metadata.get("quiz").is_some() || metadata.get("assessment").is_some();
         let passing_score = metadata
             .get("quiz")
@@ -105,7 +138,24 @@ impl LessonProgressRepository {
             .and_then(|v| v.as_f64())
             .unwrap_or(0.7);
 
-        // 2. Получаем текущий прогресс урока (если есть)
+        // 2. Блокируем и проверяем зачисление (P0: NotEnrolled, P1: CourseAlreadyCompleted)
+        let enrollment = sqlx::query(
+            r#"SELECT status, completed_lessons_weight FROM course_enrollments WHERE user_id = $1 AND course_id = $2 FOR UPDATE"#,
+        )
+        .bind(user_id.0)
+        .bind(course_id.0)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(LessonProgressRepositoryError::NotEnrolled)?;
+
+        let current_status = enrollment.get::<String, _>("status");
+        let mut current_completed_weight: f64 = enrollment.get::<f64, _>("completed_lessons_weight");
+
+        if current_status == "completed" {
+            return Err(LessonProgressRepositoryError::CourseAlreadyCompleted);
+        }
+
+        // 3. Текущий прогресс урока
         let existing_progress = sqlx::query(
             r#"SELECT id, status, score, passed, time_spent_seconds, attempt_count, last_position, completed_at, client_modified_at, created_at 
                FROM lesson_progress WHERE user_id = $1 AND node_id = $2"#,
@@ -116,7 +166,7 @@ impl LessonProgressRepository {
         .await?
         .map(|row| {
             (
-                row.get::<uuid::Uuid, _>("id"),
+                row.get::<Uuid, _>("id"),
                 row.get::<String, _>("status"),
                 row.get::<Option<f64>, _>("score"),
                 row.get::<Option<bool>, _>("passed"),
@@ -129,7 +179,7 @@ impl LessonProgressRepository {
             )
         });
 
-        // 3. Вычисляем новые значения
+        // 4. Вычисление новых значений
         let new_status = status.unwrap_or_else(|| {
             existing_progress
                 .as_ref()
@@ -165,7 +215,7 @@ impl LessonProgressRepository {
             existing_progress.as_ref().and_then(|p| p.7)
         };
 
-        // 4. Upsert lesson_progress
+        // 5. Upsert lesson_progress
         let progress_id = if let Some(ref ep) = existing_progress {
             let res = sqlx::query(
                 r#"UPDATE lesson_progress
@@ -184,9 +234,9 @@ impl LessonProgressRepository {
             .bind(ep.0)
             .fetch_one(&mut *tx)
             .await?;
-            res.get::<uuid::Uuid, _>("id")
+            res.get::<Uuid, _>("id")
         } else {
-            let new_id = uuid::Uuid::new_v4();
+            let new_id = Uuid::new_v4();
             sqlx::query(
                 r#"INSERT INTO lesson_progress (id, tenant_id, user_id, node_id, status, score, passed, 
                    time_spent_seconds, attempt_count, last_position, completed_at, client_modified_at)
@@ -206,10 +256,23 @@ impl LessonProgressRepository {
             .bind(new_client_modified_at)
             .fetch_one(&mut *tx)
             .await?
-            .get::<uuid::Uuid, _>("id")
+            .get::<Uuid, _>("id")
         };
 
-        // 5. Пересчет прогресса курса
+        // 6. Инкрементальный пересчёт веса (P1)
+        let old_status_str = existing_progress.as_ref().map(|p| p.1.as_str()).unwrap_or("not_started");
+        let new_status_str = new_status.as_str();
+
+        let delta = if new_status_str == "completed" && old_status_str != "completed" {
+            node_weight
+        } else if new_status_str != "completed" && old_status_str == "completed" {
+            -node_weight
+        } else {
+            0.0
+        };
+
+        current_completed_weight = (current_completed_weight + delta).max(0.0);
+
         let total_weight_row = sqlx::query(
             r#"SELECT COALESCE(SUM((metadata->>'weight')::numeric), 0.0) as total_weight
                FROM nodes WHERE course_id = $1 AND tenant_id = $2 AND is_archived = FALSE AND node_type = 'lesson'"#,
@@ -219,80 +282,81 @@ impl LessonProgressRepository {
         .fetch_one(&mut *tx)
         .await?;
         let total_weight: f64 = total_weight_row.get::<f64, _>("total_weight").max(0.0001);
+        
+        let course_progress = (current_completed_weight / total_weight).min(1.0).max(0.0);
 
-        let completed_weight_row = sqlx::query(
-            r#"SELECT COALESCE(SUM(CASE WHEN lp.status = 'completed' THEN COALESCE((n.metadata->>'weight')::numeric, 1.0) ELSE 0.0 END), 0.0) as completed_weight
-               FROM lesson_progress lp JOIN nodes n ON lp.node_id = n.id
-               WHERE lp.user_id = $1 AND n.course_id = $2 AND n.tenant_id = $3 AND n.is_archived = FALSE"#,
+        // 7. Проверка критериев завершения (P0)
+        let stats_row = sqlx::query(
+            r#"
+            SELECT
+                COUNT(n.id) FILTER (WHERE n.node_type = 'lesson')::int as total_lessons,
+                COUNT(n.id) FILTER (WHERE n.node_type = 'lesson' AND lp.status = 'completed')::int as completed_lessons,
+                AVG(lp.score) FILTER (WHERE n.metadata->'quiz' IS NOT NULL AND lp.status = 'completed') as avg_quiz_score,
+                COALESCE(array_agg(n.id) FILTER (WHERE lp.status = 'completed'), ARRAY[]::uuid[]) as completed_node_ids
+            FROM nodes n
+            LEFT JOIN lesson_progress lp ON n.id = lp.node_id AND lp.user_id = $1
+            WHERE n.course_id = $2 AND n.tenant_id = $3 AND n.is_archived = FALSE AND n.node_type = 'lesson'
+            "#
         )
         .bind(user_id.0)
         .bind(course_id.0)
         .bind(tenant_id.0)
         .fetch_one(&mut *tx)
         .await?;
-        let completed_weight: f64 = completed_weight_row.get::<f64, _>("completed_weight");
-        let course_progress = (completed_weight / total_weight).min(1.0).max(0.0);
 
-        // 6. Обновляем course_enrollments с блокировкой FOR UPDATE
-        let enrollment = sqlx::query(
-            r#"SELECT status FROM course_enrollments WHERE user_id = $1 AND course_id = $2 FOR UPDATE"#,
-        )
-        .bind(user_id.0)
-        .bind(course_id.0)
-        .fetch_optional(&mut *tx)
-        .await?
-        .map(|row| row.get::<String, _>("status"));
+        let total_lessons: i32 = stats_row.get::<i32, _>("total_lessons");
+        let completed_lessons: i32 = stats_row.get::<i32, _>("completed_lessons");
+        let avg_quiz_score: Option<f64> = stats_row.get::<Option<f64>, _>("avg_quiz_score");
+        let completed_node_ids: Vec<Uuid> = stats_row.get::<Vec<Uuid>, _>("completed_node_ids");
 
         let mut completion_triggered = false;
-        let mut new_enrollment_status = enrollment.clone().unwrap_or_else(|| "active".to_string());
+        let mut new_enrollment_status = current_status;
 
-        if enrollment.is_some() {
-            let course_criteria = sqlx::query(
-                r#"SELECT completion_criteria FROM courses WHERE id = $1 AND tenant_id = $2"#,
-            )
-            .bind(course_id.0)
-            .bind(tenant_id.0)
-            .fetch_optional(&mut *tx)
-            .await?
-            .and_then(|row| row.get::<Option<serde_json::Value>, _>("completion_criteria"));
+        let course_criteria = sqlx::query(
+            r#"SELECT completion_criteria FROM courses WHERE id = $1 AND tenant_id = $2"#,
+        )
+        .bind(course_id.0)
+        .bind(tenant_id.0)
+        .fetch_optional(&mut *tx)
+        .await?
+        .and_then(|row| row.get::<Option<serde_json::Value>, _>("completion_criteria"));
 
-            let mut should_complete = false;
-            if let Some(criteria_json) = course_criteria {
-                if let Ok(criteria) = CompletionCriteria::from_json(&criteria_json) {
-                    for rule in &criteria.rules {
-                        if let CompletionRule::MinProgress { value } = rule {
-                            if course_progress >= *value {
-                                should_complete = true;
-                            }
-                        }
-                    }
-                    if criteria.mode == CompletionMode::AllOf && course_progress >= 1.0 {
-                        should_complete = true;
-                    }
-                }
-            } else if course_progress >= 1.0 {
-                should_complete = true;
+        let should_complete = if let Some(criteria_json) = course_criteria {
+            if let Ok(criteria) = CompletionCriteria::from_json(&criteria_json) {
+                Self::check_completion_criteria(
+                    &criteria,
+                    course_progress,
+                    avg_quiz_score,
+                    &completed_node_ids,
+                    total_lessons,
+                    completed_lessons,
+                )
+            } else {
+                course_progress >= 1.0
             }
+        } else {
+            course_progress >= 1.0
+        };
 
-            if should_complete && new_enrollment_status != "completed" {
-                new_enrollment_status = "completed".to_string();
-                completion_triggered = true;
-            }
-
-            sqlx::query(
-                r#"UPDATE course_enrollments
-                   SET progress = $1, completed_lessons_weight = $2, status = $3,
-                       completed_at = CASE WHEN $3 = 'completed' AND completed_at IS NULL THEN NOW() ELSE completed_at END
-                   WHERE user_id = $4 AND course_id = $5"#,
-            )
-            .bind(course_progress)
-            .bind(completed_weight)
-            .bind(&new_enrollment_status)
-            .bind(user_id.0)
-            .bind(course_id.0)
-            .execute(&mut *tx)
-            .await?;
+        if should_complete {
+            new_enrollment_status = "completed".to_string();
+            completion_triggered = true;
         }
+
+        // 8. Обновление course_enrollments
+        sqlx::query(
+            r#"UPDATE course_enrollments
+               SET progress = $1, completed_lessons_weight = $2, status = $3,
+                   completed_at = CASE WHEN $3 = 'completed' AND completed_at IS NULL THEN NOW() ELSE completed_at END
+               WHERE user_id = $4 AND course_id = $5"#,
+        )
+        .bind(course_progress)
+        .bind(current_completed_weight)
+        .bind(&new_enrollment_status)
+        .bind(user_id.0)
+        .bind(course_id.0)
+        .execute(&mut *tx)
+        .await?;
 
         tx.commit().await?;
 

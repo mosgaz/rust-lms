@@ -60,6 +60,9 @@ pub async fn update_lesson_progress(
                 LessonProgressRepositoryError::NotEnrolled => {
                     (StatusCode::FORBIDDEN, "User not enrolled in this course".to_string())
                 }
+                LessonProgressRepositoryError::CourseAlreadyCompleted => {
+                    (StatusCode::CONFLICT, "Course already completed".to_string())
+                }
                 LessonProgressRepositoryError::Database(db_err) => {
                     tracing::error!(error = %db_err, "Database error updating progress");
                     (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
