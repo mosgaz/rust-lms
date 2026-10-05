@@ -118,12 +118,13 @@
   - `entities/` — заглушка для будущих сгенерированных сущностей SeaORM (read-only типы).
 - `src/http/` — HTTP-слой на базе Axum:
   - `middleware.rs` — JWT-аутентификация: извлечение Bearer-токена из заголовка `Authorization`, валидация через `JwtManager`, инъекция `IdentityId` и `TenantId` в `Request::extensions`. Refresh/Session токены отклоняются для защищённых маршрутов.
-  - `handlers.rs` — REST-обработчики с унифицированным `ApiResponse<T>`:
-    - Аутентификация: `login`, `select_tenant`, `refresh`.
-    - Тенанты: `create_tenant`, `get_tenant` (публичные).
-    - Пользователи: `create_user`, `get_user` (tenant-scoped, защищены JWT).
-    - Курсы: `list_courses`, `create_course`, `get_course`, `update_course`, `delete_course`, `publish_course` (tenant-scoped, защищены JWT).
-    - Узлы иерархии: `create_root_node`, `create_child_node`, `get_node`, `get_course_tree`, `get_node_subtree`, `update_node`, `move_node`, `delete_node` (tenant-scoped, защищены JWT).
+  - `handlers/` — REST-обработчики, разделённые по доменам (с унифицированным `ApiResponse<T>`):
+    - `mod.rs` — `AppState`, `ApiResponse`, ре-экспорты хендлеров для `router.rs`.
+    - `auth.rs` — аутентификация: `login`, `select_tenant`, `refresh` + DTO (`LoginRequest`, `SelectTenantRequest`, `TokenResponse`).
+    - `tenant.rs` — тенанты: `create_tenant`, `get_tenant` (публичные, заглушки).
+    - `user.rs` — пользователи: `create_user`, `get_user` (tenant-scoped, защищены JWT) + `CreateUserRequest`.
+    - `course.rs` — курсы: `list_courses`, `create_course`, `get_course`, `update_course`, `delete_course`, `publish_course` (tenant-scoped, защищены JWT) + DTO.
+    - `node.rs` — узлы иерархии: `create_root_node`, `create_child_node`, `get_node`, `get_course_tree`, `get_node_subtree`, `update_node`, `move_node`, `delete_node` (tenant-scoped, защищены JWT) + DTO.
   - `router.rs` — сборка Axum-роутера с разделением на публичные (`/api/v1/auth/*`, `/api/v1/tenants/*`) и защищённые JWT (`/api/v1/users/*`, `/api/v1/courses/*`, `/api/v1/nodes/*`) маршруты.
 - `src/lrs/` — низкоуровневая обработка записей LRS (пакетный импорт в TimescaleDB или ClickHouse).
 - `src/etl/` — потоковые чанк-парсеры кастомного импорта пользователей (Custom ETL Mapper).
