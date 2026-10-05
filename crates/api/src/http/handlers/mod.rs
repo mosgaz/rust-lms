@@ -8,6 +8,7 @@ pub mod batch;
 pub mod batch_enrollment;
 pub mod course;
 pub mod course_enrollment;
+pub mod lesson_progress;
 pub mod node;
 pub mod tenant;
 pub mod user;
@@ -23,6 +24,7 @@ pub use course::{
 pub use course_enrollment::{
     enroll_to_course, list_course_enrollments, list_user_course_enrollments, unenroll_from_course,
 };
+pub use lesson_progress::update_lesson_progress;
 pub use node::{
     create_child_node, create_root_node, delete_node, get_course_tree, get_node, get_node_subtree,
     move_node, update_node,
@@ -33,7 +35,7 @@ pub use user::{create_user, get_user};
 use crate::auth::AuthService;
 use crate::database::{
     BatchEnrollmentRepository, BatchRepository, CourseEnrollmentRepository, CourseRepository,
-    NodeRepository, TenantRepository, UserRepository,
+    LessonProgressRepository, NodeRepository, TenantRepository, UserRepository,
 };
 
 /// Состояние приложения, общее для всех handlers.
@@ -55,6 +57,8 @@ pub struct AppState {
     pub batch_enrollment_repo: BatchEnrollmentRepository,
     /// Репозиторий для работы с индивидуальными зачислениями на курсы.
     pub course_enrollment_repo: CourseEnrollmentRepository,
+    /// Репозиторий для работы с прогрессом обучения.
+    pub lesson_progress_repo: LessonProgressRepository,
 }
 
 /// Унифицированный формат ответа API.
@@ -71,16 +75,28 @@ pub struct ApiResponse<T> {
 impl<T> ApiResponse<T> {
     /// Хелпер для успешного ответа с данными.
     pub fn ok(data: T) -> Self {
-        Self { success: true, data: Some(data), error: None }
+        Self {
+            success: true,
+            data: Some(data),
+            error: None,
+        }
     }
 
     /// Хелпер для успешного ответа без данных.
     pub fn ok_empty() -> Self {
-        Self { success: true, data: None, error: None }
+        Self {
+            success: true,
+            data: None,
+            error: None,
+        }
     }
 
     /// Хелпер для ответа с ошибкой (тип `T` выводится из аннотации).
     pub fn err(msg: impl Into<String>) -> Self {
-        Self { success: false, data: None, error: Some(msg.into()) }
+        Self {
+            success: false,
+            data: None,
+            error: Some(msg.into()),
+        }
     }
 }

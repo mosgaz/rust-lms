@@ -11,7 +11,7 @@ use sqlx::PgPool;
 use crate::auth::{AuthService, JwtConfig, JwtManager};
 use crate::database::{
     BatchEnrollmentRepository, BatchRepository, CourseEnrollmentRepository, CourseRepository,
-    IdentityRepository, NodeRepository, TenantRepository, UserRepository,
+    IdentityRepository, LessonProgressRepository, NodeRepository, TenantRepository, UserRepository,
 };
 
 use super::handlers::{self, AppState};
@@ -28,6 +28,7 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
     let batch_repo = BatchRepository::new(pool.clone());
     let batch_enrollment_repo = BatchEnrollmentRepository::new(pool.clone());
     let course_enrollment_repo = CourseEnrollmentRepository::new(pool.clone());
+    let lesson_progress_repo = LessonProgressRepository::new(pool.clone());
     let jwt_manager = JwtManager::new(jwt_config);
 
     let auth_service = AuthService::new(
@@ -46,6 +47,7 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
         batch_repo,
         batch_enrollment_repo,
         course_enrollment_repo,
+        lesson_progress_repo,
     };
 
     let public_routes = Router::new()
@@ -56,10 +58,8 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
         .route("/api/v1/tenants/:id", get(handlers::get_tenant));
 
     let protected_routes = Router::new()
-        // Users (tenant-scoped)
         .route("/api/v1/users", post(handlers::create_user))
         .route("/api/v1/users/:id", get(handlers::get_user))
-        // Courses (tenant-scoped)
         .route(
             "/api/v1/courses",
             get(handlers::list_courses).post(handlers::create_course),
@@ -73,7 +73,6 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
         .route("/api/v1/courses/:id/publish", post(handlers::publish_course))
         .route("/api/v1/courses/:id/tree", get(handlers::get_course_tree))
         .route("/api/v1/courses/:id/nodes", post(handlers::create_root_node))
-        // Nodes (tenant-scoped)
         .route(
             "/api/v1/nodes/:id",
             get(handlers::get_node)
@@ -83,7 +82,6 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
         .route("/api/v1/nodes/:id/children", post(handlers::create_child_node))
         .route("/api/v1/nodes/:id/subtree", get(handlers::get_node_subtree))
         .route("/api/v1/nodes/:id/move", post(handlers::move_node))
-        // Batches (tenant-scoped)
         .route(
             "/api/v1/batches",
             get(handlers::list_batches).post(handlers::create_batch),
@@ -94,7 +92,6 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
                 .patch(handlers::update_batch)
                 .delete(handlers::delete_batch),
         )
-        // Batch Enrollments
         .route(
             "/api/v1/batches/:id/enroll",
             post(handlers::enroll_to_batch),
@@ -107,7 +104,6 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
             "/api/v1/batches/:id/enrollments",
             get(handlers::list_batch_enrollments),
         )
-        // Course Enrollments
         .route(
             "/api/v1/courses/:id/enroll",
             post(handlers::enroll_to_course),
@@ -124,7 +120,6 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
             "/api/v1/users/:id/enrollments",
             get(handlers::list_user_course_enrollments),
         )
-        // JWT middleware для всех защищённых маршрутов
         .layer(middleware::from_fn(jwt_auth));
 
     Router::new()
