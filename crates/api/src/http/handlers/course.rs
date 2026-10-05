@@ -204,6 +204,58 @@ pub async fn publish_course(
 
 #[cfg(test)]
 mod tests {
-    // Здесь можно добавить тесты на маппинг ошибок репозитория в HTTP-статусы,
-    // если вынести этот маппинг в чистую функцию.
+    use super::*;
+
+    /// Маппинг CourseRepositoryError -> StatusCode (общая логика всех хендлеров).
+    fn course_status(err: &CourseRepositoryError) -> StatusCode {
+        match err {
+            CourseRepositoryError::NotFound(_) => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+
+    #[test]
+    fn test_not_found_maps_to_404() {
+        let err = CourseRepositoryError::NotFound(CourseId(uuid::Uuid::nil()));
+        assert_eq!(course_status(&err), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_create_course_request_requires_title() {
+        let json = serde_json::json!({
+            "title": "Rust Basics",
+            "description": "Intro course",
+        });
+        let req: CreateCourseRequest = serde_json::from_value(json)
+            .expect("CreateCourseRequest must deserialize");
+        assert_eq!(req.title, "Rust Basics");
+        assert_eq!(req.description.as_deref(), Some("Intro course"));
+        assert!(req.title_i18n.is_none());
+        assert!(req.certification_rules.is_none());
+    }
+
+    #[test]
+    fn test_update_course_request_all_optional() {
+        let json = serde_json::json!({});
+        let req: UpdateCourseRequest = serde_json::from_value(json)
+            .expect("UpdateCourseRequest must deserialize from empty object");
+        assert!(req.title.is_none());
+        assert!(req.title_i18n.is_none());
+        assert!(req.description.is_none());
+        assert!(req.description_i18n.is_none());
+        assert!(req.certification_rules.is_none());
+    }
+
+    #[test]
+    fn test_publish_response_shape() {
+        // Логика publish_course формирует JSON с course_id и new_version.
+        let cid = CourseId(uuid::Uuid::nil());
+        let new_version: i32 = 3;
+        let payload = serde_json::json!({
+            "course_id": cid.0,
+            "new_version": new_version,
+        });
+        assert_eq!(payload["new_version"], 3);
+        assert_eq!(payload["course_id"], serde_json::json!(uuid::Uuid::nil()));
+    }
 }

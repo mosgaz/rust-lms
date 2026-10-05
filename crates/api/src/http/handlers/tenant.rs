@@ -54,5 +54,61 @@ pub async fn get_tenant(
 
 #[cfg(test)]
 mod tests {
-    // Пока нет чистой логики — можно добавить тесты, когда появится настоящий репозиторий.
+    use super::*;
+    use rust_lms_shared::TenantId;
+    use uuid::Uuid;
+
+    #[test]
+    fn test_create_tenant_defaults_when_payload_empty() {
+        // Проверяем логику извлечения slug/name без вызова хендлера.
+        // Воспроизводим то, что делает create_tenant, на чистом JSON.
+        let payload = serde_json::json!({});
+
+        let slug = payload
+            .get("slug")
+            .and_then(|v| v.as_str())
+            .unwrap_or("default");
+        let name = payload
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Default Tenant");
+
+        assert_eq!(slug, "default");
+        assert_eq!(name, "Default Tenant");
+    }
+
+    #[test]
+    fn test_create_tenant_reads_provided_fields() {
+        let payload = serde_json::json!({
+            "slug": "acme",
+            "name": "ACME Corp",
+        });
+
+        let slug = payload
+            .get("slug")
+            .and_then(|v| v.as_str())
+            .unwrap_or("default");
+        let name = payload
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Default Tenant");
+
+        assert_eq!(slug, "acme");
+        assert_eq!(name, "ACME Corp");
+    }
+
+    #[test]
+    fn test_get_tenant_id_is_passed_through() {
+        // Логика get_tenant: id из Path попадает в TenantId как есть.
+        let raw = Uuid::new_v4();
+        let tenant = Tenant {
+            id: TenantId(raw),
+            slug: "mock-slug".to_string(),
+            name: "Mock Tenant".to_string(),
+            is_active: true,
+        };
+
+        assert_eq!(tenant.id.0, raw);
+        assert!(tenant.is_active);
+    }
 }

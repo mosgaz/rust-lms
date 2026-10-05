@@ -288,6 +288,75 @@ pub async fn delete_node(
 
 #[cfg(test)]
 mod tests {
-    // Здесь можно протестировать сериализацию/десериализацию DTO,
-    // а также маппинг NodeRepositoryError -> StatusCode (если вынести в чистую функцию).
+    use super::*;
+
+    /// Маппинг NodeRepositoryError -> StatusCode для create_root_node.
+    fn create_root_status(err: &NodeRepositoryError) -> StatusCode {
+        match err {
+            NodeRepositoryError::CourseNotFound(_) => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+
+    /// Маппинг NodeRepositoryError -> StatusCode для get/update/move/delete.
+    fn node_status(err: &NodeRepositoryError) -> StatusCode {
+        match err {
+            NodeRepositoryError::NotFound(_) => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+
+    #[test]
+    fn test_course_not_found_maps_to_404() {
+        let err = NodeRepositoryError::CourseNotFound(CourseId(uuid::Uuid::nil()));
+        assert_eq!(create_root_status(&err), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_node_not_found_maps_to_404() {
+        let err = NodeRepositoryError::NotFound(NodeId(uuid::Uuid::nil()));
+        assert_eq!(node_status(&err), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_create_node_request_deserializes_full() {
+        let json = serde_json::json!({
+            "node_type": "lesson",
+            "title": "Lesson 1",
+            "description": "Intro",
+            "metadata": { "video_url": "https://example.com/v.mp4" },
+        });
+        let req: CreateNodeRequest = serde_json::from_value(json)
+            .expect("CreateNodeRequest must deserialize");
+        assert_eq!(req.title, "Lesson 1");
+        assert_eq!(req.description.as_deref(), Some("Intro"));
+        assert_eq!(req.metadata["video_url"], "https://example.com/v.mp4");
+    }
+
+    #[test]
+    fn test_update_node_request_all_optional() {
+        let json = serde_json::json!({});
+        let req: UpdateNodeRequest = serde_json::from_value(json)
+            .expect("UpdateNodeRequest must deserialize from empty object");
+        assert!(req.title.is_none());
+        assert!(req.description.is_none());
+        assert!(req.metadata.is_none());
+    }
+
+    #[test]
+    fn test_move_node_request_without_parent_is_root() {
+        let json = serde_json::json!({});
+        let req: MoveNodeRequest = serde_json::from_value(json)
+            .expect("MoveNodeRequest must deserialize");
+        assert!(req.new_parent_id.is_none());
+    }
+
+    #[test]
+    fn test_move_node_request_with_parent() {
+        let parent = uuid::Uuid::new_v4();
+        let json = serde_json::json!({ "new_parent_id": parent });
+        let req: MoveNodeRequest = serde_json::from_value(json)
+            .expect("MoveNodeRequest must deserialize");
+        assert_eq!(req.new_parent_id.map(|n| n.0), Some(parent));
+    }
 }

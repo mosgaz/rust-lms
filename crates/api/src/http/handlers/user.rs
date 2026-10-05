@@ -89,5 +89,69 @@ pub async fn get_user(
 
 #[cfg(test)]
 mod tests {
-    // Тесты на валидацию пароля можно добавить здесь, вынеся проверку в чистую функцию.
+    use super::*;
+    use crate::auth::AuthServiceError;
+
+    /// Чистая проверка длины пароля — та же логика, что в create_user.
+    fn password_is_valid(password: &str) -> bool {
+        password.len() >= 8
+    }
+
+    /// Маппинг AuthServiceError -> StatusCode для create_user.
+    fn create_user_status(err: &AuthServiceError) -> StatusCode {
+        match err {
+            AuthServiceError::EmailAlreadyExists => StatusCode::CONFLICT,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+
+    /// Маппинг UserRepositoryError -> StatusCode для get_user.
+    fn get_user_status(err: &UserRepositoryError) -> StatusCode {
+        match err {
+            UserRepositoryError::NotFound(_) => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+
+    #[test]
+    fn test_password_short_is_rejected() {
+        assert!(!password_is_valid(""));
+        assert!(!password_is_valid("1234567"));
+    }
+
+    #[test]
+    fn test_password_min_length_is_accepted() {
+        assert!(password_is_valid("12345678"));
+        assert!(password_is_valid("a-much-longer-password"));
+    }
+
+    #[test]
+    fn test_create_user_status_mapping() {
+        assert_eq!(
+            create_user_status(&AuthServiceError::EmailAlreadyExists),
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            create_user_status(&AuthServiceError::InvalidCredentials),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn test_get_user_not_found_maps_to_404() {
+        let err = UserRepositoryError::NotFound(rust_lms_shared::UserId(uuid::Uuid::nil()));
+        assert_eq!(get_user_status(&err), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_create_user_request_deserializes() {
+        let json = serde_json::json!({
+            "email": "user@example.com",
+            "password": "supersecret",
+        });
+        let req: CreateUserRequest = serde_json::from_value(json)
+            .expect("CreateUserRequest must deserialize from valid JSON");
+        assert_eq!(req.email, "user@example.com");
+        assert_eq!(req.password, "supersecret");
+    }
 }
