@@ -207,12 +207,16 @@ impl LessonProgressRepository {
         }
 
         let now = Utc::now();
-        let final_completed_at = if new_status == LessonStatus::Completed 
-            && existing_progress.as_ref().map(|p| p.1 != "completed").unwrap_or(true) 
-        {
-            Some(now)
+        
+        // P1 Fix: Сбрасываем completed_at в NULL, если статус больше не completed
+        let final_completed_at = if new_status == LessonStatus::Completed {
+            if existing_progress.as_ref().map(|p| p.1 == "completed").unwrap_or(false) {
+                existing_progress.as_ref().and_then(|p| p.7)
+            } else {
+                Some(now)
+            }
         } else {
-            existing_progress.as_ref().and_then(|p| p.7)
+            None
         };
 
         // 5. Upsert lesson_progress
@@ -273,8 +277,9 @@ impl LessonProgressRepository {
 
         current_completed_weight = (current_completed_weight + delta).max(0.0);
 
+        // P0 Fix: COALESCE для веса узла, чтобы отсутствующий weight считался как 1.0
         let total_weight_row = sqlx::query(
-            r#"SELECT COALESCE(SUM((metadata->>'weight')::numeric), 0.0) as total_weight
+            r#"SELECT COALESCE(SUM(COALESCE((metadata->>'weight')::numeric, 1.0)), 0.0) as total_weight
                FROM nodes WHERE course_id = $1 AND tenant_id = $2 AND is_archived = FALSE AND node_type = 'lesson'"#,
         )
         .bind(course_id.0)
@@ -286,32 +291,6 @@ impl LessonProgressRepository {
         let course_progress = (current_completed_weight / total_weight).min(1.0).max(0.0);
 
         // 7. Проверка критериев завершения (P0)
-        let stats_row = sqlx::query(
-            r#"
-            SELECT
-                COUNT(n.id) FILTER (WHERE n.node_type = 'lesson')::int as total_lessons,
-                COUNT(n.id) FILTER (WHERE n.node_type = 'lesson' AND lp.status = 'completed')::int as completed_lessons,
-                AVG(lp.score) FILTER (WHERE n.metadata->'quiz' IS NOT NULL AND lp.status = 'completed') as avg_quiz_score,
-                COALESCE(array_agg(n.id) FILTER (WHERE lp.status = 'completed'), ARRAY[]::uuid[]) as completed_node_ids
-            FROM nodes n
-            LEFT JOIN lesson_progress lp ON n.id = lp.node_id AND lp.user_id = $1
-            WHERE n.course_id = $2 AND n.tenant_id = $3 AND n.is_archived = FALSE AND n.node_type = 'lesson'
-            "#
-        )
-        .bind(user_id.0)
-        .bind(course_id.0)
-        .bind(tenant_id.0)
-        .fetch_one(&mut *tx)
-        .await?;
-
-        let total_lessons: i32 = stats_row.get::<i32, _>("total_lessons");
-        let completed_lessons: i32 = stats_row.get::<i32, _>("completed_lessons");
-        let avg_quiz_score: Option<f64> = stats_row.get::<Option<f64>, _>("avg_quiz_score");
-        let completed_node_ids: Vec<Uuid> = stats_row.get::<Vec<Uuid>, _>("completed_node_ids");
-
-        let mut completion_triggered = false;
-        let mut new_enrollment_status = current_status;
-
         let course_criteria = sqlx::query(
             r#"SELECT completion_criteria FROM courses WHERE id = $1 AND tenant_id = $2"#,
         )
@@ -321,7 +300,34 @@ impl LessonProgressRepository {
         .await?
         .and_then(|row| row.get::<Option<serde_json::Value>, _>("completion_criteria"));
 
+        let mut completion_triggered = false;
+        let mut new_enrollment_status = current_status;
+
+        // P2 Fix: Выполняем тяжёлый статистический запрос только если есть кастомные критерии
         let should_complete = if let Some(criteria_json) = course_criteria {
+            let stats_row = sqlx::query(
+                r#"
+                SELECT
+                    COUNT(n.id) FILTER (WHERE n.node_type = 'lesson')::int as total_lessons,
+                    COUNT(n.id) FILTER (WHERE n.node_type = 'lesson' AND lp.status = 'completed')::int as completed_lessons,
+                    AVG(lp.score) FILTER (WHERE n.metadata->'quiz' IS NOT NULL AND lp.status = 'completed') as avg_quiz_score,
+                    COALESCE(array_agg(n.id) FILTER (WHERE lp.status = 'completed'), ARRAY[]::uuid[]) as completed_node_ids
+                FROM nodes n
+                LEFT JOIN lesson_progress lp ON n.id = lp.node_id AND lp.user_id = $1
+                WHERE n.course_id = $2 AND n.tenant_id = $3 AND n.is_archived = FALSE AND n.node_type = 'lesson'
+                "#
+            )
+            .bind(user_id.0)
+            .bind(course_id.0)
+            .bind(tenant_id.0)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            let total_lessons: i32 = stats_row.get::<i32, _>("total_lessons");
+            let completed_lessons: i32 = stats_row.get::<i32, _>("completed_lessons");
+            let avg_quiz_score: Option<f64> = stats_row.get::<Option<f64>, _>("avg_quiz_score");
+            let completed_node_ids: Vec<Uuid> = stats_row.get::<Vec<Uuid>, _>("completed_node_ids");
+
             if let Ok(criteria) = CompletionCriteria::from_json(&criteria_json) {
                 Self::check_completion_criteria(
                     &criteria,
