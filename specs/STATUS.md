@@ -91,7 +91,8 @@
 | **Слой открытых токенов и API Keys** | Реализация | 🔴 | `api` | SHA-256 хэширование Opaque-ключей в БД. |
 | **Конвейер кастомного импорта (ETL)** | Реализация | 🔴 | `api` | Потоковый парсинг CSV/XLSX чанками. |
 | **SCIM 2.0 (Users/Groups)** | Реализация | 🔴 | `api` | Real-time provisioning из HRIS/HRM. |
-| **Иерархия (Programs / Courses / Batches)** | Реализация | 🟡 | `shared` / `api` | Объявление плоских DTO-контрактов (файлы-заглушки созданы), базовые сущности в работе. |
+| **Иерархия контента (Courses + Nodes с ltree)** | Реализация | 🟢 | `shared` / `api` | Модели `Course`, `Node`, `NodeId`, `NodeType` в `shared`. `CourseRepository` (CRUD + publish_version). `NodeRepository` (CRUD + ltree-запросы: find_subtree, find_course_tree, move_node). Миграция `20261006000001_create_content_hierarchy.sql` (таблицы `courses`, `nodes`, расширение ltree, GiST/GIN индексы). HTTP handlers: 14 эндпоинтов для курсов и узлов. Интеграционные тесты написаны, ожидают запуска с PostgreSQL. |
+| **Репозитории иерархии (CourseRepository + NodeRepository)** | Реализация | 🟢 | `api` | `CourseRepository`: create, find_by_id, find_by_tenant, update, delete, publish_version. `NodeRepository`: create (с автогенерацией ltree path), find_by_id, find_children, find_subtree (ltree <@), find_course_tree, update, move_node (пересчёт path поддерева), delete (каскадно), reorder. Unit-тесты проходят. |
 | **Content Versioning & Cohort Pinning** | Реализация | 🔴 | `api` | `version`, `course_versions`, `batches.content_version`. |
 | **Движок LRS (Аналитика xAPI)** | Реализация | 🔴 | `api` | Инвариантный слой TimescaleDB/ClickHouse. ADR: `2026.09.28-0002.md`. |
 | **Offline-First PWA: IndexedDB Storage** | Реализация | 🟢 | `client` | `storage.rs`: `offline_xapi_statements`, `client_clock`. |

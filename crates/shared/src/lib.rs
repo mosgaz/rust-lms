@@ -8,19 +8,24 @@
 //! Архитектура Identity-First:
 //! - `Identity` — глобальная сущность (человек, email, пароль).
 //! - `User` — связь личности с тенантом (роль в конкретном тенанте).
+//!
+//! Иерархия контента:
+//! - `Course` — основная единица учебного контента.
+//! - `Node` — единая сущность для program/course/chapter/topic/lesson.
 
 #![deny(missing_docs)]
 
 // TODO: раскомментировать при наполнении файлов реализацией
-// pub mod dto
+// pub mod dto;
 pub mod models;
 // pub mod xapi;
 
 // --- Flat re-exports для удобства импорта ---
 
-// Базовые идентификаторы, сущности и учётные данные (только реализованные)
+// Базовые идентификаторы и сущности
 pub use models::{
-    Identity, IdentityCredentials, IdentityId, Tenant, TenantId, User, UserId,
+    Course, CourseId, Identity, IdentityCredentials, IdentityId, Node, NodeId, NodeType, Tenant,
+    TenantId, User, UserId,
 };
 
 // DTO импорта и синхронизации

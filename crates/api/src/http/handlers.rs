@@ -7,12 +7,14 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use rust_lms_shared::{Tenant, TenantId, User};
+use rust_lms_shared::{CourseId, NodeId, NodeType, Tenant, TenantId, User};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::auth::{AuthService, AuthServiceError, TokenPair};
-use crate::database::{TenantRepository, UserRepository, UserRepositoryError};
+use crate::database::{
+    CourseRepository, NodeRepository, TenantRepository, UserRepository, UserRepositoryError,
+};
 
 /// Состояние приложения, общее для всех handlers.
 #[derive(Clone)]
@@ -23,6 +25,10 @@ pub struct AppState {
     pub user_repo: UserRepository,
     /// Сервис аутентификации.
     pub auth_service: AuthService,
+    /// Репозиторий для работы с курсами.
+    pub course_repo: CourseRepository,
+    /// Репозиторий для работы с узлами иерархии контента (nodes).
+    pub node_repo: NodeRepository,
 }
 
 /// Унифицированный формат ответа API.
@@ -233,6 +239,447 @@ pub async fn get_user(
         }
         Err(_) => {
             let response: ApiResponse<User> = ApiResponse { success: false, data: None, error: Some("Internal server error".to_string()) };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+        }
+    }
+}
+
+// ============================================================================
+// COURSE & NODE HANDLERS (Подэтап 7.1.2)
+// ============================================================================
+
+/// Запрос на создание нового курса.
+#[derive(Debug, Deserialize)]
+pub struct CreateCourseRequest {
+    /// Заголовок курса.
+    pub title: String,
+    /// Локализованные заголовки (BCP-47).
+    pub title_i18n: Option<serde_json::Value>,
+    /// Описание курса.
+    pub description: Option<String>,
+    /// Локализованные описания.
+    pub description_i18n: Option<serde_json::Value>,
+    /// Правила автоматической выдачи сертификатов.
+    pub certification_rules: Option<serde_json::Value>,
+}
+
+/// Запрос на обновление курса.
+#[derive(Debug, Deserialize)]
+pub struct UpdateCourseRequest {
+    /// Новый заголовок курса.
+    pub title: Option<String>,
+    /// Новые локализованные заголовки.
+    pub title_i18n: Option<serde_json::Value>,
+    /// Новое описание курса.
+    pub description: Option<String>,
+    /// Новые локализованные описания.
+    pub description_i18n: Option<serde_json::Value>,
+    /// Новые правила выдачи сертификатов.
+    pub certification_rules: Option<serde_json::Value>,
+}
+
+/// Запрос на создание нового узла иерархии.
+#[derive(Debug, Deserialize)]
+pub struct CreateNodeRequest {
+    /// Тип узла (program, course, chapter, topic, lesson).
+    pub node_type: NodeType,
+    /// Заголовок узла.
+    pub title: String,
+    /// Локализованные заголовки.
+    pub title_i18n: Option<serde_json::Value>,
+    /// Описание узла.
+    pub description: Option<String>,
+    /// Расширяемые метаданные (видео, текст, тест и т.д.).
+    pub metadata: serde_json::Value,
+}
+
+/// Запрос на обновление узла иерархии.
+#[derive(Debug, Deserialize)]
+pub struct UpdateNodeRequest {
+    /// Новый заголовок узла.
+    pub title: Option<String>,
+    /// Новые локализованные заголовки.
+    pub title_i18n: Option<serde_json::Value>,
+    /// Новое описание узла.
+    pub description: Option<String>,
+    /// Новые метаданные.
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Запрос на перемещение узла иерархии.
+#[derive(Debug, Deserialize)]
+pub struct MoveNodeRequest {
+    /// Идентификатор нового родительского узла (None для корневых).
+    pub new_parent_id: Option<NodeId>,
+}
+
+// --- Handlers: Courses ---
+
+/// Создаёт новый курс в контексте текущего тенанта.
+pub async fn create_course(
+    State(state): State<AppState>,
+    Extension(tenant_id): Extension<TenantId>,
+    Json(payload): Json<CreateCourseRequest>,
+) -> impl IntoResponse {
+    tracing::info!(tenant_id = %tenant_id, title = %payload.title, "Creating new course");
+
+    match state.course_repo.create(
+        tenant_id,
+        &payload.title,
+        payload.title_i18n,
+        payload.description.as_deref(),
+        payload.description_i18n,
+        payload.certification_rules,
+    ).await {
+        Ok(course) => {
+            let response = ApiResponse { success: true, data: Some(course), error: None };
+            (StatusCode::CREATED, Json(response)).into_response()
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to create course");
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some(e.to_string()) };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+        }
+    }
+}
+
+/// Получает курс по идентификатору.
+pub async fn get_course(
+    State(state): State<AppState>,
+    Extension(tenant_id): Extension<TenantId>,
+    Path(course_id): Path<Uuid>,
+) -> impl IntoResponse {
+    let cid = CourseId(course_id);
+    match state.course_repo.find_by_id(tenant_id, cid).await {
+        Ok(course) => {
+            let response = ApiResponse { success: true, data: Some(course), error: None };
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(crate::database::CourseRepositoryError::NotFound(_)) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some("Course not found".to_string()) };
+            (StatusCode::NOT_FOUND, Json(response)).into_response()
+        }
+        Err(e) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some(e.to_string()) };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+        }
+    }
+}
+
+/// Получает список курсов текущего тенанта.
+pub async fn list_courses(
+    State(state): State<AppState>,
+    Extension(tenant_id): Extension<TenantId>,
+) -> impl IntoResponse {
+    match state.course_repo.find_by_tenant(tenant_id, 100, 0).await {
+        Ok(courses) => {
+            let response = ApiResponse { success: true, data: Some(courses), error: None };
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(e) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some(e.to_string()) };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+        }
+    }
+}
+
+/// Обновляет метаданные курса.
+pub async fn update_course(
+    State(state): State<AppState>,
+    Extension(tenant_id): Extension<TenantId>,
+    Path(course_id): Path<Uuid>,
+    Json(payload): Json<UpdateCourseRequest>,
+) -> impl IntoResponse {
+    let cid = CourseId(course_id);
+    match state.course_repo.update(
+        tenant_id,
+        cid,
+        payload.title.as_deref(),
+        payload.title_i18n,
+        payload.description.as_deref(),
+        payload.description_i18n,
+        payload.certification_rules,
+    ).await {
+        Ok(course) => {
+            let response = ApiResponse { success: true, data: Some(course), error: None };
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(crate::database::CourseRepositoryError::NotFound(_)) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some("Course not found".to_string()) };
+            (StatusCode::NOT_FOUND, Json(response)).into_response()
+        }
+        Err(e) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some(e.to_string()) };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+        }
+    }
+}
+
+/// Удаляет курс и все связанные с ним узлы (каскадно).
+pub async fn delete_course(
+    State(state): State<AppState>,
+    Extension(tenant_id): Extension<TenantId>,
+    Path(course_id): Path<Uuid>,
+) -> impl IntoResponse {
+    let cid = CourseId(course_id);
+    match state.course_repo.delete(tenant_id, cid).await {
+        Ok(()) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: true, data: None, error: None };
+            (StatusCode::NO_CONTENT, Json(response)).into_response()
+        }
+        Err(crate::database::CourseRepositoryError::NotFound(_)) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some("Course not found".to_string()) };
+            (StatusCode::NOT_FOUND, Json(response)).into_response()
+        }
+        Err(e) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some(e.to_string()) };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+        }
+    }
+}
+
+/// Публикует новую версию курса (инкремент версии).
+pub async fn publish_course(
+    State(state): State<AppState>,
+    Extension(tenant_id): Extension<TenantId>,
+    Path(course_id): Path<Uuid>,
+) -> impl IntoResponse {
+    let cid = CourseId(course_id);
+    match state.course_repo.publish_version(tenant_id, cid).await {
+        Ok(new_version) => {
+            let response = ApiResponse { 
+                success: true, 
+                data: Some(serde_json::json!({ "course_id": cid.0, "new_version": new_version })), 
+                error: None 
+            };
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(crate::database::CourseRepositoryError::NotFound(_)) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some("Course not found".to_string()) };
+            (StatusCode::NOT_FOUND, Json(response)).into_response()
+        }
+        Err(e) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some(e.to_string()) };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+        }
+    }
+}
+
+// --- Handlers: Nodes ---
+
+/// Создаёт корневой узел для указанного курса.
+pub async fn create_root_node(
+    State(state): State<AppState>,
+    Extension(tenant_id): Extension<TenantId>,
+    Path(course_id): Path<Uuid>,
+    Json(payload): Json<CreateNodeRequest>,
+) -> impl IntoResponse {
+    let cid = CourseId(course_id);
+    match state.node_repo.create(
+        tenant_id,
+        None,
+        payload.node_type,
+        Some(cid),
+        &payload.title,
+        payload.title_i18n,
+        payload.description.as_deref(),
+        payload.metadata,
+    ).await {
+        Ok(node) => {
+            let response = ApiResponse { success: true, data: Some(node), error: None };
+            (StatusCode::CREATED, Json(response)).into_response()
+        }
+        Err(e) => {
+            let status = match e {
+                crate::database::NodeRepositoryError::CourseNotFound(_) => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some(e.to_string()) };
+            (status, Json(response)).into_response()
+        }
+    }
+}
+
+/// Создаёт дочерний узел для указанного родителя.
+pub async fn create_child_node(
+    State(state): State<AppState>,
+    Extension(tenant_id): Extension<TenantId>,
+    Path(parent_id): Path<Uuid>,
+    Json(payload): Json<CreateNodeRequest>,
+) -> impl IntoResponse {
+    let pid = NodeId(parent_id);
+    
+    let parent = match state.node_repo.find_by_id(tenant_id, pid).await {
+        Ok(p) => p,
+        Err(crate::database::NodeRepositoryError::NotFound(_)) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some("Parent node not found".to_string()) };
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
+        }
+        Err(e) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some(e.to_string()) };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+        }
+    };
+
+    match state.node_repo.create(
+        tenant_id,
+        Some(pid),
+        payload.node_type,
+        parent.course_id,
+        &payload.title,
+        payload.title_i18n,
+        payload.description.as_deref(),
+        payload.metadata,
+    ).await {
+        Ok(node) => {
+            let response = ApiResponse { success: true, data: Some(node), error: None };
+            (StatusCode::CREATED, Json(response)).into_response()
+        }
+        Err(e) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some(e.to_string()) };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+        }
+    }
+}
+
+/// Получает узел по идентификатору.
+pub async fn get_node(
+    State(state): State<AppState>,
+    Extension(tenant_id): Extension<TenantId>,
+    Path(node_id): Path<Uuid>,
+) -> impl IntoResponse {
+    let nid = NodeId(node_id);
+    match state.node_repo.find_by_id(tenant_id, nid).await {
+        Ok(node) => {
+            let response = ApiResponse { success: true, data: Some(node), error: None };
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(crate::database::NodeRepositoryError::NotFound(_)) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some("Node not found".to_string()) };
+            (StatusCode::NOT_FOUND, Json(response)).into_response()
+        }
+        Err(e) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some(e.to_string()) };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+        }
+    }
+}
+
+/// Получает полное дерево узлов для указанного курса.
+pub async fn get_course_tree(
+    State(state): State<AppState>,
+    Extension(tenant_id): Extension<TenantId>,
+    Path(course_id): Path<Uuid>,
+) -> impl IntoResponse {
+    let cid = CourseId(course_id);
+    match state.node_repo.find_course_tree(tenant_id, cid).await {
+        Ok(nodes) => {
+            let response = ApiResponse { success: true, data: Some(nodes), error: None };
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(e) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some(e.to_string()) };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+        }
+    }
+}
+
+/// Получает поддерево начиная с указанного узла (через ltree).
+pub async fn get_node_subtree(
+    State(state): State<AppState>,
+    Extension(tenant_id): Extension<TenantId>,
+    Path(node_id): Path<Uuid>,
+) -> impl IntoResponse {
+    let nid = NodeId(node_id);
+    match state.node_repo.find_subtree(tenant_id, nid).await {
+        Ok(nodes) => {
+            let response = ApiResponse { success: true, data: Some(nodes), error: None };
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(crate::database::NodeRepositoryError::NotFound(_)) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some("Node not found".to_string()) };
+            (StatusCode::NOT_FOUND, Json(response)).into_response()
+        }
+        Err(e) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some(e.to_string()) };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+        }
+    }
+}
+
+/// Обновляет метаданные узла (title, description, metadata).
+pub async fn update_node(
+    State(state): State<AppState>,
+    Extension(tenant_id): Extension<TenantId>,
+    Path(node_id): Path<Uuid>,
+    Json(payload): Json<UpdateNodeRequest>,
+) -> impl IntoResponse {
+    let nid = NodeId(node_id);
+    match state.node_repo.update(
+        tenant_id,
+        nid,
+        payload.title.as_deref(),
+        payload.title_i18n,
+        payload.description.as_deref(),
+        payload.metadata,
+    ).await {
+        Ok(node) => {
+            let response = ApiResponse { success: true, data: Some(node), error: None };
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(crate::database::NodeRepositoryError::NotFound(_)) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some("Node not found".to_string()) };
+            (StatusCode::NOT_FOUND, Json(response)).into_response()
+        }
+        Err(e) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some(e.to_string()) };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+        }
+    }
+}
+
+/// Перемещает узел под нового родителя (обновляет ltree path).
+pub async fn move_node(
+    State(state): State<AppState>,
+    Extension(tenant_id): Extension<TenantId>,
+    Path(node_id): Path<Uuid>,
+    Json(payload): Json<MoveNodeRequest>,
+) -> impl IntoResponse {
+    let nid = NodeId(node_id);
+    match state.node_repo.move_node(tenant_id, nid, payload.new_parent_id).await {
+        Ok(node) => {
+            let response = ApiResponse { success: true, data: Some(node), error: None };
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(crate::database::NodeRepositoryError::NotFound(_)) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some("Node or new parent not found".to_string()) };
+            (StatusCode::NOT_FOUND, Json(response)).into_response()
+        }
+        Err(e) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some(e.to_string()) };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+        }
+    }
+}
+
+/// Удаляет узел и всё его поддерево (каскадно).
+pub async fn delete_node(
+    State(state): State<AppState>,
+    Extension(tenant_id): Extension<TenantId>,
+    Path(node_id): Path<Uuid>,
+) -> impl IntoResponse {
+    let nid = NodeId(node_id);
+    match state.node_repo.delete(tenant_id, nid).await {
+        Ok(()) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: true, data: None, error: None };
+            (StatusCode::NO_CONTENT, Json(response)).into_response()
+        }
+        Err(crate::database::NodeRepositoryError::NotFound(_)) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some("Node not found".to_string()) };
+            (StatusCode::NOT_FOUND, Json(response)).into_response()
+        }
+        Err(e) => {
+            let response: ApiResponse<serde_json::Value> = ApiResponse { success: false, data: None, error: Some(e.to_string()) };
             (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
         }
     }

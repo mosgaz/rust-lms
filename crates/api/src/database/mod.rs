@@ -13,7 +13,8 @@ pub mod rls;
 
 pub use pool::DatabasePool;
 pub use repositories::{
-    IdentityRepository, IdentityRepositoryError, TenantRepository, TenantRepositoryError,
-    UserRepository, UserRepositoryError,
+    CourseRepository, CourseRepositoryError, IdentityRepository, IdentityRepositoryError,
+    NodeRepository, NodeRepositoryError, TenantRepository, TenantRepositoryError, UserRepository,
+    UserRepositoryError,
 };
 pub use rls::RlsContext;

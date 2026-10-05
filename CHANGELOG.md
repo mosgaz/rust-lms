@@ -8,6 +8,14 @@
 ## [Unreleased]
 
 ### Added
+- **api**: добавлена иерархия контента на базе PostgreSQL `ltree` (Adjacency List + ltree):
+  - Миграция `20261006000001_create_content_hierarchy.sql`: таблицы `courses` и `nodes` с RLS, расширение `ltree`, GiST/GIN индексы.
+  - Модели `Course`, `CourseId`, `Node`, `NodeId`, `NodeType` в `shared`.
+  - `CourseRepository`: CRUD + `publish_version` (инкремент версии курса).
+  - `NodeRepository`: CRUD + ltree-запросы (`find_subtree`, `find_course_tree`, `move_node` с пересчётом path поддерева).
+  - 14 HTTP-эндпоинтов для курсов и узлов: `list_courses`, `create_course`, `get_course`, `update_course`, `delete_course`, `publish_course`, `create_root_node`, `create_child_node`, `get_node`, `get_course_tree`, `get_node_subtree`, `update_node`, `move_node`, `delete_node`.
+  - Поддержка гибкой вложенности: `Program → Course → Chapter → Topic → Lesson` с возможностью пропуска уровней.
+  - Интеграционные тесты (`hierarchy_test.rs`): создание иерархии, ltree-запросы, перемещение узлов, RLS-изоляция.
 - **shared**: добавлены модели `Identity`, `IdentityId` и `IdentityCredentials` для глобального представления личности (ADR 2026.10.05-0011).
 - **api**: добавлен `IdentityRepository` для операций с глобальными личностями (`find_credentials_by_email`, `create_with_password`, `update_preferred_tenant`).
 - **api**: добавлен `TokenType::Session` в JWT-инфраструктуру для короткоживущих токенов выбора тенанта (TTL 5 мин, без claim `tenant_id`).
@@ -30,6 +38,8 @@
 - **api**: реализован `RlsContext` для установки сессионной переменной `app.current_tenant_id` (ADR 2026.09.28-0001).
 
 ### Changed
+- **api**: обновлён `AppState` — добавлены поля `course_repo` и `node_repo` для работы с иерархией контента.
+- **api**: обновлён `router.rs` — зарегистрированы новые маршруты `/api/v1/courses/*` и `/api/v1/nodes/*` с защитой JWT middleware.
 - **[BREAKING CHANGE] api/db**: Переход на Identity-First архитектуру. Миграция `20261003000001_init_rls_and_tenants.sql` полностью переписана: добавлена глобальная таблица `identities` (без RLS), таблица `users` теперь хранит только связь `identity_id` + `tenant_id` (с RLS). Удалена миграция `20261005000001_add_password_hash_to_users.sql`.
 - **api**: Поток аутентификации изменён на двухшаговый (`login` → `select_tenant`) с поддержкой автоматического выбора при наличии валидного `preferred_tenant_id`.
 - **api**: `UserRepository` рефакторен: методы работы с паролями перенесены в `IdentityRepository`. Добавлены методы `find_active_tenants_for_identity` и `is_user_active_in_tenant`.

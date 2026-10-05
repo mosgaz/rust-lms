@@ -109,10 +109,12 @@
 - `src/database/` — менеджер пула соединений SQLx и RLS-интерцептор:
   - `pool.rs` — `DatabasePool` с конфигурируемыми лимитами соединений.
   - `rls.rs` — `RlsContext` для установки сессионной переменной `app.current_tenant_id` (см. `CODING_STANDARDS.md` §2.1 и ADR 2026.09.28-0001).
-  - `repositories/` — репозитории для Identity-First архитектуры:
+  - `repositories/` — репозитории для Identity-First архитектуры и иерархии контента:
     - `identity.rs` — `IdentityRepository` (CRUD для глобальных личностей: `find_credentials_by_email`, `update_preferred_tenant`, `create_with_password`).
     - `user.rs` — `UserRepository` (CRUD для связей identity-tenant: `find_active_tenants_for_identity`, `is_user_active_in_tenant`, `create`).
     - `tenant.rs` — `TenantRepository` (CRUD для тенантов).
+    - `course.rs` — `CourseRepository` (CRUD для курсов: `create`, `find_by_id`, `find_by_tenant`, `update`, `delete`, `publish_version`).
+    - `node.rs` — `NodeRepository` (CRUD для узлов иерархии с ltree: `create`, `find_by_id`, `find_children`, `find_subtree`, `find_course_tree`, `update`, `move_node`, `delete`, `reorder`).
   - `entities/` — заглушка для будущих сгенерированных сущностей SeaORM (read-only типы).
 - `src/http/` — HTTP-слой на базе Axum:
   - `middleware.rs` — JWT-аутентификация: извлечение Bearer-токена из заголовка `Authorization`, валидация через `JwtManager`, инъекция `IdentityId` и `TenantId` в `Request::extensions`. Refresh/Session токены отклоняются для защищённых маршрутов.
@@ -120,7 +122,9 @@
     - Аутентификация: `login`, `select_tenant`, `refresh`.
     - Тенанты: `create_tenant`, `get_tenant` (публичные).
     - Пользователи: `create_user`, `get_user` (tenant-scoped, защищены JWT).
-  - `router.rs` — сборка Axum-роутера с разделением на публичные (`/api/v1/auth/*`, `/api/v1/tenants/*`) и защищённые JWT (`/api/v1/users/*`) маршруты.
+    - Курсы: `list_courses`, `create_course`, `get_course`, `update_course`, `delete_course`, `publish_course` (tenant-scoped, защищены JWT).
+    - Узлы иерархии: `create_root_node`, `create_child_node`, `get_node`, `get_course_tree`, `get_node_subtree`, `update_node`, `move_node`, `delete_node` (tenant-scoped, защищены JWT).
+  - `router.rs` — сборка Axum-роутера с разделением на публичные (`/api/v1/auth/*`, `/api/v1/tenants/*`) и защищённые JWT (`/api/v1/users/*`, `/api/v1/courses/*`, `/api/v1/nodes/*`) маршруты.
 - `src/lrs/` — низкоуровневая обработка записей LRS (пакетный импорт в TimescaleDB или ClickHouse).
 - `src/etl/` — потоковые чанк-парсеры кастомного импорта пользователей (Custom ETL Mapper).
 - `src/scim/` — маппинг SCIM 2.0 (RFC 7643 / 7644) на внутренние сущности `users` / `batches` (см. `OPEN_API.md` §3.5).
@@ -131,6 +135,7 @@
 
 Миграции БД лежат в каталоге `crates/api/migrations/` (см. `MIGRATIONS.md`) и не являются модулем внутри `api`. Текущие миграции:
 - `20261003000001_init_rls_and_tenants.sql` — таблицы `tenants`, `identities` (без RLS), `users` (с RLS, связь identity-tenant), политики RLS, индексы, CHECK constraints.
+- `20261006000001_create_content_hierarchy.sql` — таблицы `courses` (с RLS), `nodes` (с RLS, ltree-иерархия: parent_id + path), расширение ltree, GiST/GIN индексы.
 
 ### 3.5. Крейт: `crates/client` (Isomorphic Frontend, PWA & RPC)
 

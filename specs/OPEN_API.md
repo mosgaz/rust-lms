@@ -307,6 +307,188 @@
 }
 ```
 
+### 4.3. Иерархия контента (Courses & Nodes)
+
+Иерархия контента построена на единой таблице `nodes` с использованием PostgreSQL-расширения `ltree` (Adjacency List + ltree). Поддерживается гибкая вложенность: `Program → Course → Chapter → Topic → Lesson`, с возможностью пропуска промежуточных уровней.
+
+> **См. также:** `DB_SCHEMA.md` §1.2 (описание таблиц `courses` и `nodes`), ADR по Identity-First архитектуре.
+
+#### `GET /api/v1/courses`
+- **Уровень доступа:** Локальный токен тенанта (JWT Bearer).
+- **Назначение:** Получение списка курсов текущего тенанта (пагинация: limit 100, offset 0).
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid-v4",
+      "tenant_id": "uuid-v4",
+      "title": "Введение в Rust",
+      "description": "Базовый курс для начинающих",
+      "version": 1
+    }
+  ],
+  "error": null
+}
+```
+
+#### `POST /api/v1/courses`
+- **Уровень доступа:** Локальный токен тенанта со scope `courses:write`.
+- **Назначение:** Создание нового курса.
+- **Request:**
+```json
+{
+  "title": "Введение в Rust",
+  "title_i18n": {"en": "Introduction to Rust", "ru": "Введение в Rust"},
+  "description": "Базовый курс",
+  "description_i18n": null,
+  "certification_rules": {"auto_issue": true}
+}
+```
+- **Response (201 Created):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid-v4",
+    "tenant_id": "uuid-v4",
+    "title": "Введение в Rust",
+    "version": 1
+  },
+  "error": null
+}
+```
+
+#### `GET /api/v1/courses/:id`
+- **Уровень доступа:** Локальный токен тенанта.
+- **Назначение:** Получение метаданных курса по идентификатору.
+- **Response (200 OK):** Аналогично `POST /api/v1/courses`.
+- **Ошибки:** `404 Not Found` (курс не существует или принадлежит другому тенанту — RLS).
+
+#### `PATCH /api/v1/courses/:id`
+- **Уровень доступа:** Локальный токен тенанта со scope `courses:write`.
+- **Назначение:** Частичное обновление метаданных курса.
+- **Request:** (любое подмножество полей)
+```json
+{
+  "title": "Новое название курса",
+  "description": "Обновлённое описание"
+}
+```
+
+#### `DELETE /api/v1/courses/:id`
+- **Уровень доступа:** Локальный токен тенанта со scope `courses:write`.
+- **Назначение:** Удаление курса. **Каскадно удаляет все связанные узлы** (через FK `ON DELETE CASCADE`).
+- **Response (204 No Content).**
+
+#### `POST /api/v1/courses/:id/publish`
+- **Уровень доступа:** Локальный токен тенанта со scope `courses:write`.
+- **Назначение:** Публикация новой версии курса (инкремент `version`).
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "course_id": "uuid-v4",
+    "new_version": 2
+  },
+  "error": null
+}
+```
+
+#### `GET /api/v1/courses/:id/tree`
+- **Уровень доступа:** Локальный токен тенанта.
+- **Назначение:** Получение полного дерева узлов курса (все главы, темы, уроки), отсортированное по `path` (ltree) и `sort_order`.
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid-chapter",
+      "parent_id": null,
+      "node_type": "chapter",
+      "course_id": "uuid-course",
+      "title": "Глава 1: Основы",
+      "metadata": {},
+      "sort_order": 0
+    },
+    {
+      "id": "uuid-lesson",
+      "parent_id": "uuid-chapter",
+      "node_type": "lesson",
+      "course_id": "uuid-course",
+      "title": "Урок 1.1: Синтаксис",
+      "metadata": {"content_type": "video", "video": {"file_id": "uuid-dam"}},
+      "sort_order": 0
+    }
+  ],
+  "error": null
+}
+```
+
+#### `POST /api/v1/courses/:id/nodes`
+- **Уровень доступа:** Локальный токен тенанта со scope `courses:write`.
+- **Назначение:** Создание корневого узла курса (глава или изолированный урок). Автоматически устанавливает `course_id` и генерирует `path` на основе `node_id`.
+- **Request:**
+```json
+{
+  "node_type": "chapter",
+  "title": "Глава 1",
+  "title_i18n": null,
+  "description": "Основы языка",
+  "metadata": {}
+}
+```
+- **Response (201 Created):** Объект узла.
+- **Ошибки:** `404 Not Found` (курс не существует).
+
+#### `POST /api/v1/nodes/:id/children`
+- **Уровень доступа:** Локальный токен тенанта со scope `courses:write`.
+- **Назначение:** Создание дочернего узла. Автоматически наследует `course_id` от родителя и вычисляет `path` как `parent_path.node_id`.
+- **Request:** Аналогично `POST /api/v1/courses/:id/nodes`.
+- **Response (201 Created):** Объект узла.
+- **Ошибки:** `404 Not Found` (родительский узел не существует).
+
+#### `GET /api/v1/nodes/:id`
+- **Уровень доступа:** Локальный токен тенанта.
+- **Назначение:** Получение метаданных отдельного узла.
+
+#### `GET /api/v1/nodes/:id/subtree`
+- **Уровень доступа:** Локальный токен тенанта.
+- **Назначение:** Получение поддерева, начиная с указанного узла (через ltree-оператор `<@`). Возвращает сам узел и всех его потомков.
+- **Response (200 OK):** Массив узлов, отсортированный по `path` и `sort_order`.
+
+#### `PATCH /api/v1/nodes/:id`
+- **Уровень доступа:** Локальный токен тенанта со scope `courses:write`.
+- **Назначение:** Обновление полей узла (`title`, `title_i18n`, `description`, `metadata`). **Не изменяет структуру дерева.**
+- **Request:**
+```json
+{
+  "title": "Новое название",
+  "metadata": {"content_type": "video", "video": {"file_id": "new-uuid"}}
+}
+```
+
+#### `POST /api/v1/nodes/:id/move`
+- **Уровень доступа:** Локальный токен тенанта со scope `courses:write`.
+- **Назначение:** Перемещение узла под нового родителя. **Автоматически пересчитывает `path` для всего поддерева** (через `text2ltree` и ltree-операторы).
+- **Request:**
+```json
+{
+  "new_parent_id": "uuid-new-parent"
+}
+```
+- **Response (200 OK):** Обновлённый объект узла с новым `parent_id`.
+- **Ошибки:** `404 Not Found` (узел или новый родитель не существуют).
+- **Примечание:** Для перемещения в корень (сделать узел корневым) передайте `"new_parent_id": null`.
+
+#### `DELETE /api/v1/nodes/:id`
+- **Уровень доступа:** Локальный токен тенанта со scope `courses:write`.
+- **Назначение:** Удаление узла. **Каскадно удаляет всё поддерево** (через FK `ON DELETE CASCADE` на `parent_id`).
+- **Response (204 No Content).**
+
 ---
 
 ## 5. Feature Flags

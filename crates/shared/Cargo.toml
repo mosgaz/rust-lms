@@ -11,6 +11,7 @@ description = "Плоские DTO, сущности, контракты обме
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 uuid = { workspace = true, features = ["serde", "v4"] }
 
 # sqlx нужен только для серверной части (макрос Type для UUID)
