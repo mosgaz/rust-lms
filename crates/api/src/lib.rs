@@ -8,6 +8,7 @@
 
 #![deny(missing_docs)]
 
+pub mod auth;
 pub mod database;
 pub mod http;
 
@@ -21,5 +22,6 @@ pub mod http;
 // pub mod scim;
 
 // Re-exports для удобства
-pub use database::{DatabasePool, RlsContext, TenantRepository, UserRepository};
+pub use auth::{JwtClaims, JwtConfig, JwtManager, PasswordHasher};
+pub use database::{DatabasePool, RlsContext, TenantRepository, UserRepository, UserRepositoryError};
 pub use http::create_router;

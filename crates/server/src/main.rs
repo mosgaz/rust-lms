@@ -1,4 +1,3 @@
-
 // crates/server/src/main.rs
 //! Точка входа серверного приложения rust-lms.
 //!
@@ -8,7 +7,7 @@
 use std::net::SocketAddr;
 
 use axum::Router;
-use rust_lms_api::{create_router, DatabasePool};
+use rust_lms_api::{create_router, DatabasePool, JwtConfig};
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
 
@@ -46,8 +45,24 @@ async fn main() {
 
     tracing::info!("Database connection pool initialized");
 
+    // Конфигурация JWT (с fallback на значения по умолчанию для разработки).
+    let jwt_config = JwtConfig {
+        secret: std::env::var("RUST_LMS_JWT_SECRET")
+            .unwrap_or_else(|_| "change-me-in-production-min-32-bytes-long-secret!".to_string()),
+        access_ttl_secs: std::env::var("RUST_LMS_JWT_ACCESS_TTL")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(900), // 15 минут
+        refresh_ttl_secs: std::env::var("RUST_LMS_JWT_REFRESH_TTL")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(604_800), // 7 дней
+    };
+
+    tracing::info!("JWT configuration loaded");
+
     // Создание и настройка Axum-роутера.
-    let app: Router = create_router(pool)
+    let app: Router = create_router(pool, jwt_config)
         .layer(TraceLayer::new_for_http())
         .into();
 
