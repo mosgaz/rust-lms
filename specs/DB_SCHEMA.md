@@ -2,7 +2,7 @@
 
 **Файл спецификации:** `DB_SCHEMA.md`
 
-> Сводная картина — в [`ARCHITECTURE.md`](ARCHITECTURE.md) §1 и §3. Регламент миграций — в [`MIGRATIONS.md`](MIGRATIONS.md). Количественные NFR (RTO/RPO, лимиты) — в [`NFR.md`](NFR.md). Правила i18n и локализации — в [`STANDARDS.md`](STANDARDS.md) §«Локализация». Feature Flags — в [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md) и ADR [`2026.09.29-0009.md`](decisions/2026.09.29-0009.md).
+> Сводная картина — в [`ARCHITECTURE.md`](ARCHITECTURE.md) §1 и §3. Регламент миграций — в [`MIGRATIONS.md`](MIGRATIONS.md). Количественные NFR (RTO/RPO, лимиты) — в [`NFR.md`](NFR.md). Правила i18n и локализации — в [`STANDARDS.md`](STANDARDS.md) §«Локализация». Feature Flags — в [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md) и ADR [`2026.09.29-0009.md`](decisions/2026.09.29-0009.md). Identity-First архитектура — в ADR [`2026.10.05-0011.md`](decisions/2026.10.05-0011.md).
 
 ## 1. Реляционный слой (PostgreSQL Core) и Стратегия Мультитенантности
 
@@ -19,7 +19,7 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
     USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 ```
 
-4. Исключение из правил RLS составляют глобальные инфраструктурные таблицы служебного уровня (`tenants`, `tenant_api_keys`, `feature_flags`, `license`, `revoked_jwt_kids`), доступ к которым имеет исключительно супер-администратор системы или специализированный авторизационный слой шлюза безопасности.
+4. Исключение из правил RLS составляют глобальные инфраструктурные таблицы служебного уровня (`tenants`, `identities`, `tenant_api_keys`, `feature_flags`, `license`, `revoked_jwt_kids`), доступ к которым имеет исключительно супер-администратор системы или специализированный авторизационный слой шлюза безопасности.
 
 > **Установка контекста.** Контекст тенанта устанавливается через `set_config('app.current_tenant_id', $1, true)` внутри ACID-транзакции (см. [`CODING_STANDARDS.md`](CODING_STANDARDS.md) §2.1). Прямое использование `SET LOCAL app.current_tenant_id = $1` не поддерживает параметризацию через `$1` и не применяется.
 
@@ -38,6 +38,20 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
 * `branding_config`: JSONB (Переменные UI-кита: цветовые гексакоды для маппинга в Tailwind CSS текущей сессии тенанта, пути к логотипам в DAM).
 * `status`: VARCHAR(32) (Ограничение CHECK: `'active'`, `'suspended'`, `'archived'`).
 * `created_at` / `updated_at`: TIMESTAMPTZ.
+
+#### Глобальная таблица: identities (Изолирована от RLS)
+
+Предназначена для хранения глобальных учетных данных личности. Одна личность (один email) может иметь доступ к нескольким тенантам. Архитектура Identity-First (см. ADR [`2026.10.05-0011.md`](decisions/2026.10.05-0011.md)).
+
+* `id`: UUID (Primary Key, `gen_random_uuid()`).
+* `email`: VARCHAR(255) (Уникальный, `UNIQUE NOT NULL`). Адрес электронной почты, используемый для входа в систему.
+* `password_hash`: TEXT (Хэш пароля в формате PHC string, например `$argon2id$...`, см. RFC 9106).
+* `preferred_tenant_id`: UUID (FK -> tenants.id ON DELETE SET NULL, NULLable). Используется для автоматического выбора тенанта при успешной аутентификации, если тенант активен.
+* `created_at` / `updated_at`: TIMESTAMPTZ.
+* **Ограничения:** `CHECK (char_length(email) BETWEEN 3 AND 255)`, `CHECK (char_length(password_hash) BETWEEN 10 AND 1024)`.
+* **Индексы:** `idx_identities_email` (для быстрого поиска при логине), `idx_identities_preferred_tenant_id`.
+
+> **Примечание:** Эта таблица не защищена RLS, так как проверка пароля происходит до определения контекста тенанта. Доступ к ней имеет только слой аутентификации.
 
 #### Глобальная таблица: tenant_api_keys (Изолирована от RLS)
 
@@ -126,18 +140,18 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
 
 #### Таблица: users (Защищена RLS)
 
-Регистрирует учетные записи пользователей внутри конкретного цифрового контура организации.
+Регистрирует связь личности (`identity`) с конкретным цифровым контуром организации (`tenant`). Одна личность может иметь несколько записей `users` в разных тенантах (например, как сотрудник в одном и как внешний эксперт в другом). Архитектура Identity-First (см. ADR [`2026.10.05-0011.md`](decisions/2026.10.05-0011.md)).
 
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
-* `external_id`: VARCHAR(255) (Уникальный символьный идентификатор пользователя, приходящий из SSO-системы тенанта при авторизации).
-* `email`: VARCHAR(255) (Адрес электронной почты пользователя).
-* `first_name` / `last_name`: VARCHAR(128).
-* `system_role`: VARCHAR(32) (Ограничение CHECK: `'admin'`, `'instructor'`, `'mentor'`, `'learner'`, `'observer'`).
-* `locale`: VARCHAR(16) (BCP-47. Предпочтительная локаль пользователя; NULLable — наследуется от `tenants.default_locale`).
-* `metadata`: JSONB (Свободная структура атрибутов профиля, заполняемая через Custom ETL Mapper из внешних файлов импорта).
+* `identity_id`: UUID (FK -> identities.id ON DELETE CASCADE). Ссылка на глобальную личность.
+* `is_active`: BOOLEAN (NOT NULL, DEFAULT TRUE). Позволяет деактивировать доступ личности к конкретному тенанту без удаления глобальной учетной записи.
 * `created_at` / `updated_at`: TIMESTAMPTZ.
-* **Ограничения:** Составной уникальный индекс `UNIQUE (tenant_id, external_id)` и `UNIQUE (tenant_id, email)`.
+* **Ограничения:** Составной уникальный индекс `UNIQUE (tenant_id, identity_id)` (одна личность может быть добавлена в тенант только один раз).
+* **Индексы:** `idx_users_tenant_id`, `idx_users_identity_id` (для быстрого поиска всех тенантов личности).
+* **RLS Политика:** `user_tenant_isolation_policy` (фильтрация по `tenant_id = current_setting('app.current_tenant_id', true)`).
+
+> **Примечание:** В Identity-First архитектуре таблица `users` представляет роль личности в конкретном тенанте, а не саму личность. Глобальные данные (email, password_hash, preferred_tenant_id) хранятся в таблице `identities` (без RLS).
 
 #### Таблица: programs (Защищена RLS)
 
@@ -178,7 +192,7 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
 * `version`: INTEGER (NOT NULL). Номер версии, соответствующий `courses.version`.
 * `course_tree`: JSONB (Снапшот структуры на момент публикации версии).
 * `published_at`: TIMESTAMPTZ.
-* `published_by`: UUID (FK -> users.id, NULLable).
+* `published_by`: UUID (FK -> users.id, NULLable). Ссылка на `users.id` (роль личности в тенанте, который опубликовал версию).
 * **Ограничения:** Уникальный индекс `UNIQUE (tenant_id, course_id, version)`.
 
 #### Таблица: batches (Защищена RLS)
@@ -201,7 +215,7 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
 * `batch_id`: UUID (FK -> batches.id ON DELETE CASCADE).
-* `user_id`: UUID (FK -> users.id ON DELETE CASCADE).
+* `user_id`: UUID (FK -> users.id ON DELETE CASCADE). Ссылка на `users.id` (роль личности в тенанте, зачисленного в поток).
 * `status`: VARCHAR(32) (Ограничение CHECK: `'active'`, `'completed'`, `'dropped'`).
 * `enrolled_at`: TIMESTAMPTZ.
 * **Ограничения:** Составной уникальный индекс `UNIQUE (tenant_id, batch_id, user_id)`.
@@ -241,7 +255,7 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
 
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
-* `user_id`: UUID (FK -> users.id ON DELETE CASCADE).
+* `user_id`: UUID (FK -> users.id ON DELETE CASCADE). Ссылка на `users.id` (роль личности в тенанте, получившего сертификат).
 * `target_type`: VARCHAR(32) (Ограничение CHECK: `'course'`, `'program'`, `'batch'`).
 * `target_id`: UUID (Идентификатор сущности, за которую выдан документ).
 * `verification_hash`: VARCHAR(64) (Уникальный публичный хэш-код для верификации сторонними системами).
@@ -266,7 +280,7 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
   * `timestamp`: TIMESTAMPTZ (NOT NULL, время фактического совершения действия пользователем на клиентском устройстве из IndexedDB).
   * `stored_at`: TIMESTAMPTZ (NOT NULL, время физического приема и записи пакета сервером хоста).
   * `course_id`: UUID (NOT NULL, индексируется).
-  * `user_id`: UUID (NOT NULL, индексируется).
+  * `user_id`: UUID (NOT NULL, индексируется). Ссылка на `users.id` (роль личности в тенанте, совершившего действие).
   * `actor_anonymized`: BOOLEAN (NOT NULL, DEFAULT FALSE). TRUE, если `actor` в statement заменён на анонимный идентификатор по политике retention (`action = 'anonymize'`).
   * `statement_payload`: JSONB (NOT NULL, полное несжатое JSON-LD тело xAPI Statement).
 * **Индексы и сегментация:** Создается композитный индекс `(tenant_id, course_id, timestamp DESC)`.
@@ -292,7 +306,7 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
   * **Схема колонок данных:**
     * `tenant_id`: UUID.
     * `statement_id`: UUID.
-    * `user_id`: UUID.
+    * `user_id`: UUID. Ссылка на `users.id` (роль личности в тенанте, совершившего действие).
     * `course_id`: UUID.
     * `timestamp`: DateTime64(3, 'UTC') (Время действия на клиенте с точностью до миллисекунд).
     * `stored_at`: DateTime64(3, 'UTC') (Серверное время коммита).
@@ -340,3 +354,4 @@ ClickHouse не поддерживает `ON CONFLICT DO NOTHING` как Postgre
 3. Для средних объёмов (до 1 ТБ) допустима построчная мутация.
 
 Аналогичная логика применима к Варианту А (TimescaleDB), где мутации дешевле, но всё равно выполняются в фоне.
+

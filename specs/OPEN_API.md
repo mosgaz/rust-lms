@@ -1,26 +1,37 @@
-## Файл 3: `specs/OPEN_API.md`
-
 # Спецификация Open API: Контракты REST/GraphQL
 
 **Файл спецификации:** `specs/OPEN_API.md`
 
-> Смежные разделы: NFR и лимиты — в `NFR.md`; схема БД — в `DB_SCHEMA.md`; офлайн-синхронизация — в `OFFLINE_SYNC.md`; аутентификация и токены — в `ARCHITECTURE.md` §2.
+> Смежные разделы: NFR и лимиты — в `NFR.md`; схема БД (Identity-First) — в `DB_SCHEMA.md`; офлайн-синхронизация — в `OFFLINE_SYNC.md`; архитектурные решения по аутентификации — в ADR `2026.10.05-0011.md`.
 
 ## 1. Общие принципы API
 
 ### 1.1. Версионирование
 Все эндпоинты используют префикс `/api/v1/`. Изменение контракта (breaking change) требует выпуска новой версии (`/api/v2/`) и следует регламенту deprecation (ADR `2026.09.29-0007.md`).
 
-### 1.2. Аутентификация и авторизация
-- **Глобальные токены** (супер-администратор): JWT (EdDSA / RS256), не хранятся в БД.
-- **Локальные токены** (тенант): Opaque Tokens (SHA-256 хэш в БД), привязаны к `tenant_id`.
-- **Scopes:** `users:sync`, `analytics:read`, `analytics:write`, `courses:write`, `scim:sync`, `features:read`, `features:write`, `license:read`.
+### 1.2. Аутентификация и авторизация (Identity-First Flow)
+Система использует архитектуру Identity-First: одна глобальная личность (`identity`) может иметь доступ к нескольким тенантам. Аутентификация реализована как двухшаговый процесс:
+
+1. **Шаг 1: Идентификация (`POST /api/v1/auth/login`)**
+   - Клиент отправляет `email` и `password`.
+   - Сервер проверяет хэш пароля глобально (таблица `identities`).
+   - Если у личности есть активный `preferred_tenant_id`, сервер немедленно возвращает финальную пару токенов (`access_token` + `refresh_token`).
+   - Если `preferred_tenant_id` отсутствует, неактивен или их несколько, сервер возвращает короткий `session_token` (TTL 5 мин, без `tenant_id` в claims) и список `available_tenants` для выбора.
+
+2. **Шаг 2: Выбор контекста (`POST /api/v1/auth/select-tenant`)**
+   - Клиент отправляет `session_token` и выбранный `tenant_id`.
+   - Сервер проверяет, что личность действительно имеет активный доступ к этому `tenant_id` (таблица `users`).
+   - Сервер выдает финальную пару токенов (`access_token` содержит claim `tenant_id` для RLS) и обновляет `preferred_tenant_id` для будущих входов.
+
+- **Формат токенов:** JWT (HS256). `access_token` живет 15 минут, `refresh_token` — 7 дней, `session_token` — 5 минут.
+- **Передача токена:** Заголовок `Authorization: Bearer <access_token>` для всех защищённых эндпоинтов.
+- **RLS-интеграция:** Middleware извлекает `tenant_id` из claims `access_token` и устанавливает сессионную переменную `app.current_tenant_id` перед выполнением любых запросов к БД.
 
 ### 1.3. Формат ответов
 Все ответы возвращают JSON с полями:
-- `data` — полезная нагрузка (для успешных операций).
-- `error` — объект с полями `code`, `message`, `details` (для ошибок).
-- `meta` — пагинация, метаданные (опционально).
+- `success` — boolean, флаг успешности операции.
+- `data` — полезная нагрузка (для успешных операций, `null` при ошибке).
+- `error` — строка с сообщением об ошибке (для ошибок, `null` при успехе).
 
 ### 1.4. Защита от перегрузок (Rate Limiting)
 Ограничение частоты входящих запросов реализуется на уровне API-шлюза бэкенда по алгоритму **Token Bucket**. Лимиты изолированы для каждого тенанта и дифференцируются в зависимости от уровня API-ключа.
@@ -30,6 +41,8 @@
 - Выдачи подписанных URL.
 - Offline-синхронизации (`POST /api/v1/analytics/lrs/sync`).
 - Provisioning тенантов.
+
+---
 
 ## 2. Управление инфраструктурой (Глобальный API)
 
@@ -51,34 +64,114 @@
 - **Response (201 Created):**
 ```json
 {
+  "success": true,
   "data": {
-    "tenant_id": "uuid-v4",
-    "admin_user_id": "uuid-v4",
-    "created_at": "2026-10-02T14:30:00Z"
-  }
+    "id": "uuid-v4",
+    "slug": "client1",
+    "name": "ООО «Пример»",
+    "is_active": true
+  },
+  "error": null
 }
 ```
 
-## 3. Управление пользователями и аналитикой
+---
 
-### 3.1. Кастомный импорт пользователей (ETL)
+## 3. Аутентификация и управление пользователями
+
+### 3.1. Аутентификация и выбор тенанта
+
+#### `POST /api/v1/auth/login`
+- **Уровень доступа:** Публичный.
+- **Назначение:** Проверка учётных данных и начало сессии.
+- **Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "SecurePassword123!"
+}
+```
+- **Response (Авто-выбор, 200 OK):** Возвращается, если `preferred_tenant_id` установлен и активен.
+```json
+{
+  "success": true,
+  "data": {
+    "access_token": "eyJ...",
+    "refresh_token": "eyJ...",
+    "token_type": "Bearer"
+  },
+  "error": null
+}
+```
+- **Response (Требуется выбор, 200 OK):** Возвращается, если тенантов несколько или `preferred_tenant_id` невалиден.
+```json
+{
+  "success": true,
+  "data": {
+    "session_token": "eyJ...",
+    "available_tenants": [
+      { "id": "uuid-1", "name": "ООО Ромашка", "slug": "romashka" },
+      { "id": "uuid-2", "name": "ИП Иванов", "slug": "ivanov" }
+    ]
+  },
+  "error": null
+}
+```
+
+#### `POST /api/v1/auth/select-tenant`
+- **Уровень доступа:** Требуется валидный `session_token` (передается в теле запроса).
+- **Назначение:** Выбор конкретного тенанта из списка доступных и получение финальных токенов.
+- **Request:**
+```json
+{
+  "session_token": "eyJ...",
+  "tenant_id": "uuid-1"
+}
+```
+- **Response (200 OK):** Возвращает финальные токены. Сервер также обновляет `preferred_tenant_id` для этой личности.
+```json
+{
+  "success": true,
+  "data": {
+    "access_token": "eyJ...",
+    "refresh_token": "eyJ...",
+    "token_type": "Bearer"
+  },
+  "error": null
+}
+```
+
+#### `POST /api/v1/auth/refresh`
+- **Уровень доступа:** Требуется валидный `refresh_token` (передается в теле запроса).
+- **Назначение:** Получение новой пары токенов без повторного ввода пароля.
+- **Request:**
+```json
+{
+  "refresh_token": "eyJ..."
+}
+```
+- **Response (200 OK):** Аналогичен успешному ответу `login` (авто-выбор).
+
+### 3.2. Кастомный импорт пользователей (ETL)
 
 #### `POST /api/v1/users/import-custom`
-- **Уровень доступа:** Локальный токен тенанта со scope `users:sync`.
-- **Назначение:** Массовый импорт пользователей из CSV/XLSX/JSON.
+- **Уровень доступа:** Локальный токен тенанта (`access_token`) со scope `users:sync`.
+- **Назначение:** Массовый импорт пользователей из CSV/XLSX/JSON. Создает новые `identities` или связывает существующие с текущим `tenant_id`.
 - **Request:** `multipart/form-data` с файлом и маппингом полей.
 - **Response (202 Accepted):**
 ```json
 {
+  "success": true,
   "data": {
     "job_id": "uuid-v4",
     "status": "queued",
     "estimated_duration_sec": 120
-  }
+  },
+  "error": null
 }
 ```
 
-### 3.2. SCIM 2.0 (Real-time Provisioning)
+### 3.3. SCIM 2.0 (Real-time Provisioning)
 
 #### `GET /scim/v2/Users`
 #### `POST /scim/v2/Users`
@@ -89,7 +182,7 @@
 - **Контракт:** RFC 7643 / 7644.
 - **Idempotency:** Все POST-запросы обязаны содержать `X-Idempotency-Key`.
 
-### 3.3. Выдача подписанных URL для медиа
+### 3.4. Выдача подписанных URL для медиа
 
 #### `POST /api/v1/content/signed-url`
 - **Уровень доступа:** Локальный токен тенанта.
@@ -104,15 +197,17 @@
 - **Response (200 OK):**
 ```json
 {
+  "success": true,
   "data": {
     "signed_url": "https://dam.example.com/files/uuid?signature=...",
     "expires_at": "2026-10-02T15:30:00Z"
-  }
+  },
+  "error": null
 }
 ```
 - **Алгоритм подписи:** HMAC-SHA256 с коротким TTL.
 
-### 3.4. Офлайн-синхронизация xAPI-стейтментов
+### 3.5. Офлайн-синхронизация xAPI-стейтментов
 
 #### `POST /api/v1/analytics/lrs/sync`
 - **Уровень доступа:** Локальный токен тенанта со scope `analytics:write`.
@@ -149,6 +244,7 @@
 **Response (200 OK):**
 ```json
 {
+  "success": true,
   "data": {
     "accepted": ["uuid-v4-1", "uuid-v4-2"],
     "rejected": [
@@ -158,7 +254,8 @@
         "message": "Statement with this ID already exists in LRS"
       }
     ]
-  }
+  },
+  "error": null
 }
 ```
 
@@ -200,13 +297,18 @@
 - **Response (200 OK):**
 ```json
 {
+  "success": true,
   "data": {
     "course_id": "uuid-v4",
     "new_version": 3,
     "published_at": "2026-10-02T14:30:00Z"
-  }
+  },
+  "error": null
 }
 ```
+
+---
+
 ## 5. Feature Flags
 
 ### 5.1. Глобальное управление (супер-администратор)
@@ -224,6 +326,8 @@
 #### `PATCH /api/v1/features/{name}`
 - **Уровень доступа:** Локальный токен тенанта со scope `features:write`.
 - **Ограничение:** Только для флагов с `is_delegatable = true` (см. `FEATURE_FLAGS.md` §5.2).
+
+---
 
 ## 6. Лицензирование (On-Premise / Air-gapped)
 
@@ -244,6 +348,8 @@
   "license_key": "<base64url(header)>.<base64url(payload)>.<base64url(signature)>"
 }
 ```
+
+---
 
 ## 7. Событийные Вебхуки (Webhooks Engine)
 
@@ -270,11 +376,14 @@
   "signature": "sha256=..."
 }
 ```
+*(Примечание: `user_id` в вебхуках ссылается на запись в таблице `users`, то есть на конкретную роль личности в данном тенанте).*
 
 **Гарантии доставки:**
 - At-least-once с retry (exponential backoff: 1s, 5s, 30s, 5min, 30min).
 - После 5 неудачных попыток — перемещение в `dead_letter` queue.
 - Подпись HMAC-SHA256 для верификации источника.
+
+---
 
 ## 8. Ограничения и лимиты
 
@@ -283,10 +392,12 @@
 - Размер одного запроса: **≤ 10 МБ** (для bulk-операций).
 - Timeout для всех запросов: **30 секунд** (кроме streaming-экспорта LRS — 5 минут).
 
+---
+
 ## 9. Связь с другими спецификациями
 
 - `NFR.md` — лимиты, latency budgets, пропускная способность.
-- `DB_SCHEMA.md` — структура таблиц, RLS-политики.
+- `DB_SCHEMA.md` — структура таблиц (Identity-First), RLS-политики.
 - `OFFLINE_SYNC.md` — клиентская логика синхронизации.
 - `FEATURE_FLAGS.md` — управление функциональными флагами.
 - `LICENSING.md` — офлайн-лицензирование для коробочных поставок.

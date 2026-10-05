@@ -56,7 +56,8 @@
     │       ├── 2026.09.29-0007.md    # Операционный регламент deprecation API
     │       ├── 2026.09.29-0008.md    # Формат и enforcement лицензионного ключа
     │       ├── 2026.09.29-0009.md    # Архитектура Feature Flags
-    │       └── 2026.09.29-0010.md    # Supply Chain Security для WASM-плагинов
+    │       ├── 2026.09.29-0010.md    # Supply Chain Security для WASM-плагинов
+    │       └── 2026.10.05-0011.md    # Identity-First архитектура: разделение личности и роли в тенанте
     │
     └── crates/                       # Физические Rust-крейты платформы
         ├── shared/                   # Слой сетевых контрактов, структур сущностей и DTO
@@ -73,10 +74,11 @@
 
 Абсолютно плоский крейт без привязки к СУБД или UI. Содержит структуры данных, компилируемые как под `wasm32`, так и под нативный x86_64/arm64 сервер.
 
-- `src/models/` — базовые структуры сущностей с типобезопасными идентификаторами и строгой привязкой к `TenantId` для мультиарендности (ADR 2026.09.28-0001). Реализованы:
+- `src/models/` — базовые структуры сущностей с типобезопасными идентификаторами и строгой привязкой к `TenantId` для мультиарендности (ADR 2026.09.28-0001). Архитектура Identity-First (ADR 2026.10.05-0011):
+  - `identity.rs` — `IdentityId`, `Identity` (глобальная личность: email, preferred_tenant_id).
+  - `user.rs` — `UserId`, `User` (связь личности с тенантом: identity_id, tenant_id, is_active).
+  - `credentials.rs` — `IdentityCredentials` (email + password_hash для аутентификации).
   - `tenant.rs` — `TenantId`, `Tenant`.
-  - `user.rs` — `UserId`, `User`.
-  - `credentials.rs` — `Credentials` (email + password_hash для аутентификации).
   - Заглушки для будущих сущностей: `Course`, `Program`, `Batch`, `Certificate`.
 - `src/dto/` — запросы и ответы API-интерфейсов (`ImportPayload`, `SyncPackage`).
 - `src/xapi/` — строгие иммутабельные типы для генерации xAPI Statements.
@@ -97,21 +99,25 @@
 
 Серверное бэкенд-ядро обработки данных. **Импорт макросов Leptos сюда аппаратно запрещен.**
 
-- `src/auth/` — модуль аутентификации:
+- `src/auth/` — модуль аутентификации (Identity-First архитектура, ADR 2026.10.05-0011):
   - `password.rs` — `PasswordHasher` на базе Argon2id (RFC 9106, PHC-формат хэшей).
-  - `jwt.rs` — `JwtManager`, `JwtClaims`, `JwtConfig`, `TokenType` (Access/Refresh). Токены содержат обязательный claim `tenant_id` для интеграции с RLS (ADR 2026.09.28-0001).
-  - `service.rs` — `AuthService` — единая точка входа для операций `login`/`refresh`, координирующая `UserRepository`, `PasswordHasher` и `JwtManager`.
+  - `jwt.rs` — `JwtManager`, `JwtClaims`, `JwtConfig`, `TokenType` (Access/Refresh/Session). Токены содержат обязательный claim `tenant_id` (кроме Session) для интеграции с RLS (ADR 2026.09.28-0001).
+  - `service.rs` — `AuthService` — единая точка входа для двухшагового потока аутентификации:
+    - `authenticate` — проверка email/password, возврат `AuthResult::SingleTenant` (авто-выбор preferred_tenant_id) или `AuthResult::MultiTenant` (session_token + список тенантов).
+    - `select_tenant` — выбор конкретного тенанта по session_token, выдача финальных токенов, обновление preferred_tenant_id.
+    - `refresh`, `create_user_in_tenant`.
 - `src/database/` — менеджер пула соединений SQLx и RLS-интерцептор:
   - `pool.rs` — `DatabasePool` с конфигурируемыми лимитами соединений.
   - `rls.rs` — `RlsContext` для установки сессионной переменной `app.current_tenant_id` (см. `CODING_STANDARDS.md` §2.1 и ADR 2026.09.28-0001).
-  - `repositories/` — базовые репозитории:
+  - `repositories/` — репозитории для Identity-First архитектуры:
+    - `identity.rs` — `IdentityRepository` (CRUD для глобальных личностей: `find_credentials_by_email`, `update_preferred_tenant`, `create_with_password`).
+    - `user.rs` — `UserRepository` (CRUD для связей identity-tenant: `find_active_tenants_for_identity`, `is_user_active_in_tenant`, `create`).
     - `tenant.rs` — `TenantRepository` (CRUD для тенантов).
-    - `user.rs` — `UserRepository` (CRUD для пользователей, включая `create_with_password` и `find_credentials_by_email`).
   - `entities/` — заглушка для будущих сгенерированных сущностей SeaORM (read-only типы).
 - `src/http/` — HTTP-слой на базе Axum:
-  - `middleware.rs` — JWT-аутентификация: извлечение Bearer-токена из заголовка `Authorization`, валидация через `JwtManager`, инъекция `TenantId` и `UserId` в `Request::extensions`. Refresh-токены отклоняются для защищённых маршрутов.
+  - `middleware.rs` — JWT-аутентификация: извлечение Bearer-токена из заголовка `Authorization`, валидация через `JwtManager`, инъекция `IdentityId` и `TenantId` в `Request::extensions`. Refresh/Session токены отклоняются для защищённых маршрутов.
   - `handlers.rs` — REST-обработчики с унифицированным `ApiResponse<T>`:
-    - Аутентификация: `login`, `refresh`.
+    - Аутентификация: `login`, `select_tenant`, `refresh`.
     - Тенанты: `create_tenant`, `get_tenant` (публичные).
     - Пользователи: `create_user`, `get_user` (tenant-scoped, защищены JWT).
   - `router.rs` — сборка Axum-роутера с разделением на публичные (`/api/v1/auth/*`, `/api/v1/tenants/*`) и защищённые JWT (`/api/v1/users/*`) маршруты.
@@ -124,8 +130,7 @@
 - `src/sbom/` — генерация SBOM (CycloneDX) для WASM-плагинов, сканирование уязвимостей через `osv-scanner`, интеграция с Revocation List (см. ADR `2026.09.29-0010.md`).
 
 Миграции БД лежат в каталоге `crates/api/migrations/` (см. `MIGRATIONS.md`) и не являются модулем внутри `api`. Текущие миграции:
-- `20261003000001_init_rls_and_tenants.sql` — таблицы `tenants` и `users` с политиками RLS.
-- `20261005000001_add_password_hash_to_users.sql` — колонка `password_hash` (PHC-формат Argon2id), композитный индекс `(tenant_id, email)`, ограничения длины.
+- `20261003000001_init_rls_and_tenants.sql` — таблицы `tenants`, `identities` (без RLS), `users` (с RLS, связь identity-tenant), политики RLS, индексы, CHECK constraints.
 
 ### 3.5. Крейт: `crates/client` (Isomorphic Frontend, PWA & RPC)
 
@@ -193,4 +198,5 @@
 2. **Изоляция WASM-контура:** Крейты `ui`, `icons` и `client` компилируются под таргет `wasm32-unknown-unknown` для работы в браузере. Им запрещено напрямую использовать нативные методы `crates/api` или `crates/server`. Вся связь между фронтенд-компонентами и бэкенд-логикой идет строго через объявления Leptos `#[server]` RPC-функций или асинхронные вызовы сетевого Open API.
 3. **Идемпотентность типов:** Общие структуры в `shared` должны использовать примитивы, одинаково сериализуемые как макросами `serde` для сервера, так и `serde_wasm_bindgen` для клиента.
 4. **Автономность CLI:** Крейт `cli` не зависит от `server` и `client`. Он может использовать `shared` и `api` (для доступа к БД), но не может импортировать Leptos-зависимости.
-5. **Условная компиляция `shared`:** Модели с атрибутом `#[sqlx(transparent)]` (например, `TenantId`, `UserId`) доступны только при включённой фиче `server`. Клиентский код (`client`) должен использовать модели через `serde`-сериализацию без прямого доступа к `sqlx`-типам.
+5. **Условная компиляция `shared`:** Модели с атрибутом `#[sqlx(transparent)]` (например, `TenantId`, `UserId`, `IdentityId`) доступны только при включённой фиче `server`. Клиентский код (`client`) должен использовать модели через `serde`-сериализацию без прямого доступа к `sqlx`-типам.
+6. **Identity-First архитектура (ADR 2026.10.05-0011):** Глобальная таблица `identities` (email, password_hash, preferred_tenant_id) не защищена RLS, так как проверка пароля происходит до определения контекста тенанта. Таблица `users` (связь identity_id + tenant_id) защищена RLS по `tenant_id`. Одна личность может иметь несколько записей `users` в разных тенантах.

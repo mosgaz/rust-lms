@@ -4,7 +4,7 @@
 
 > Этот файл динамически обновляется AI-агентами после завершения каждого таска. Изменение статусов дублируется записью в `CHANGELOG.md`.
 
-**Текущий этап проекта:** активная реализация серверного ядра (`api` + `server`). Базовый HTTP-цикл (DTO → БД → REST → Axum-хост) замкнут. **Аутентификация JWT полностью реализована** (Argon2id + access/refresh токены + RLS-интеграция).
+**Текущий этап проекта:** активная реализация серверного ядра (`api` + `server`). Базовый HTTP-цикл (DTO → БД → REST → Axum-хост) замкнут. **Внедрена Identity-First архитектура** (ADR 2026.10.05-0011): глобальная личность (`identities`) + роли в тенантах (`users`), двухшаговая аутентификация с авто-выбором `preferred_tenant_id`.
 **Кодовая база:** активная разработка.
 
 ---
@@ -34,10 +34,10 @@
 | `specs/SPECIFICATION.md` | 🟢 | — | Бизнес-концепция, иерархия, версионирование, retention, роли. |
 | `specs/ARCHITECTURE.md` | 🟢 | — | Сводный ADD: RLS, Open API, LRS, плагины, ETL. |
 | `specs/NFR.md` | 🟢 | — | SLA, RTO/RPO, concurrency, latency budgets, лимиты. |
-| `specs/STRUCTURE.md` | 🟢 | — | Карта папок, Dependency Rules, состав крейтов (актуализировано). |
-| `specs/DB_SCHEMA.md` | 🟢 | — | Таблицы, RLS, версионирование, i18n, retention, LRS, feature flags, license. |
+| `specs/STRUCTURE.md` | 🟢 | — | Карта папок, Dependency Rules, состав крейтов (актуализировано под Identity-First). |
+| `specs/DB_SCHEMA.md` | 🟢 | — | Таблицы, RLS, версионирование, i18n, retention, LRS, feature flags, license (актуализировано: `identities` + `users`). |
 | `specs/MIGRATIONS.md` | 🟢 | — | Регламент на базе `sqlx` + Runbook для администратора. |
-| `specs/OPEN_API.md` | 🟢 | — | REST/GraphQL, Opaque-токены, SCIM 2.0, signed-url, вебхуки, **offline-sync**. |
+| `specs/OPEN_API.md` | 🟢 | — | REST/GraphQL, Opaque-токены, SCIM 2.0, signed-url, вебхуки, **offline-sync**, двухшаговая аутентификация. |
 | `specs/OFFLINE_SYNC.md` | 🟢 | — | IndexedDB, синхронизация, конфликты, iOS-лимиты, DRM, офлайн-шелл. |
 | `specs/PLUGIN.md` | 🟢 | — | Двухуровневый рантайм, FSM, подпись и kill switch. |
 | `specs/PLUGIN_DEVELOPMENT_TEMPLATE.md` | 🟢 | — | Шаблон ТЗ для внешних команд (включая a11y). |
@@ -64,6 +64,7 @@
 | `specs/decisions/2026.09.29-0008.md` | 🟢 | — | ADR: формат и enforcement лицензионного ключа. |
 | `specs/decisions/2026.09.29-0009.md` | 🟢 | — | ADR: архитектура Feature Flags. |
 | `specs/decisions/2026.09.29-0010.md` | 🟢 | — | ADR: Supply Chain Security для WASM-плагинов. |
+| `specs/decisions/2026.10.05-0011.md` | 🟢 | — | ADR: Identity-First архитектура (разделение личности и роли в тенанте). |
 | `CONTRIBUTING.md` | 🟢 | — | Коммиты, ветвление, Conventional Commits. |
 | `CHANGELOG.md` | 🟢 | — | Журнал изменений. |
 
@@ -73,14 +74,18 @@
 
 | Компонент / Фича | Тип | Статус | Крейт-ответственный | Примечания / Ссылка на ADR |
 | :-- | :-: | :-: | :-- | :-- |
-| **Базовые DTO сущностей (Tenant, User, Credentials)** | Реализация | 🟢 | `shared` | Структурированы в `models/`, типобезопасные ID (`TenantId`, `UserId`), строгая привязка к `TenantId`. `Credentials` для аутентификации. ADR: `2026.09.28-0001.md`. |
-| **Мультиарендность (Strict Multi-tenancy)** | Реализация | 🟢 | `api` | RLS-интерцептор, репозитории и Axum middleware (JWT Bearer → `TenantId` из claims). ADR: `2026.09.28-0001.md`. |
-| **Хеширование паролей (Argon2id)** | Реализация | 🟢 | `api` | `PasswordHasher` с PHC-форматом, RFC 9106 compliant. 3 unit-теста. |
-| **JWT-инфраструктура (Access/Refresh)** | Реализация | 🟢 | `api` | `JwtManager`, `JwtClaims` с claim `tenant_id`, `TokenType` (Access/Refresh). Конфигурация через env `RUST_LMS_JWT_*`. 5 unit-тестов. |
-| **AuthService (login/refresh)** | Реализация | 🟢 | `api` | Единая точка входа для аутентификации, координирует `UserRepository`, `PasswordHasher`, `JwtManager`. 7 unit-тестов. |
-| **JWT middleware (Bearer auth)** | Реализация | 🟢 | `api` | Извлечение Bearer-токена, валидация, инъекция `TenantId`/`UserId` в extensions. Отклонение refresh-токенов. 6 integration-тестов. |
-| **REST-эндпоинты аутентификации** | Реализация | 🟢 | `api` | `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`. Унифицированный `ApiResponse<T>`. 3 unit-теста. |
-| **Динамический Provisioning тенантов** | Реализация | 🟡 | `api` | REST-эндпоинты `POST/GET /api/v1/tenants` реализованы. Ожидает расширения (обновление, деактивация, SCIM). |
+| **Базовые DTO сущностей (Identity, User, Tenant)** | Реализация | 🟢 | `shared` | Identity-First модели: `Identity` (глобальная личность), `User` (связь identity-tenant), `Tenant`. Типобезопасные ID (`IdentityId`, `UserId`, `TenantId`). ADR: `2026.10.05-0011.md`. |
+| **Identity-First схема БД** | Реализация | 🟢 | `api` | Миграция `20261003000001`: таблицы `tenants`, `identities` (без RLS), `users` (с RLS). CHECK constraints, индексы. ADR: `2026.10.05-0011.md`. |
+| **IdentityRepository** | Реализация | 🟢 | `api` | CRUD для глобальных личностей: `find_credentials_by_email`, `find_by_id`, `update_preferred_tenant`, `create_with_password`. Unit-тесты. |
+| **UserRepository (Identity-First)** | Реализация | 🟢 | `api` | CRUD для связей identity-tenant: `find_active_tenants_for_identity`, `is_user_active_in_tenant`, `create`, `find_by_id`. Unit-тесты. |
+| **Мультиарендность (Strict Multi-tenancy)** | Реализация | 🟢 | `api` | RLS-интерцептор, репозитории и Axum middleware (JWT Bearer → `IdentityId` + `TenantId` из claims). ADR: `2026.09.28-0001.md`. |
+| **Хеширование паролей (Argon2id)** | Реализация | 🟢 | `api` | `PasswordHasher` с PHC-форматом, RFC 9106 compliant. Хэш хранится в `identities.password_hash`. 3 unit-теста. |
+| **JWT-инфраструктура (Access/Refresh/Session)** | Реализация | 🟢 | `api` | `JwtManager`, `JwtClaims` с claim `tenant_id`, `TokenType` (Access/Refresh/Session). Session token — без `tenant_id`, TTL 5 мин. Конфигурация через env `RUST_LMS_JWT_*`. 5 unit-тестов. |
+| **AuthService (двухшаговая аутентификация)** | Реализация | 🟢 | `api` | `authenticate` → `AuthResult::SingleTenant` (авто-выбор по `preferred_tenant_id`) или `AuthResult::MultiTenant` (session_token + список). `select_tenant` — выбор тенанта, обновление `preferred_tenant_id`. `refresh`, `create_user_in_tenant`. 3 unit-теста. |
+| **preferred_tenant_id (авто-выбор тенанта)** | Реализация | 🟢 | `api` | Глобальное поле в `identities`, обновляется при `select_tenant`. Используется для бесшовного входа при следующем логине. ADR: `2026.10.05-0011.md`. |
+| **JWT middleware (Bearer auth)** | Реализация | 🟢 | `api` | Извлечение Bearer-токена, валидация, инъекция `IdentityId`/`TenantId` в extensions. Отклонение refresh/session токенов для защищённых маршрутов. 2 integration-теста. |
+| **REST-эндпоинты аутентификации** | Реализация | 🟢 | `api` | `POST /api/v1/auth/login`, `POST /api/v1/auth/select-tenant`, `POST /api/v1/auth/refresh`. Унифицированный `ApiResponse<T>`. 2 unit-теста. |
+| **Динамический Provisioning тенантов** | Реализация | 🟡 | `api` | REST-эндпоинты `POST/GET /api/v1/tenants` реализованы (заглушки). Ожидает расширения (обновление, деактивация, SCIM). |
 | **Точка входа сервера (Axum Host)** | Реализация | 🟢 | `server` | `main.rs`: tracing, config, DatabasePool, **JwtConfig**, роутер из `api`, TraceLayer, graceful shutdown. Порт 3720. |
 | **Конфигурация приложения** | Реализация | 🟢 | `server` | `config.toml` + переменные окружения `RUST_LMS_*` (включая `RUST_LMS_JWT_SECRET`, `RUST_LMS_JWT_ACCESS_TTL`, `RUST_LMS_JWT_REFRESH_TTL`). |
 | **Слой открытых токенов и API Keys** | Реализация | 🔴 | `api` | SHA-256 хэширование Opaque-ключей в БД. |
