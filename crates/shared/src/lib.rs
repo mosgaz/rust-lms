@@ -24,8 +24,9 @@ pub mod models;
 
 // Базовые идентификаторы и сущности
 pub use models::{
-    Course, CourseId, Identity, IdentityCredentials, IdentityId, Node, NodeId, NodeType, Tenant,
-    TenantId, User, UserId,
+    Batch, BatchEnrollment, BatchEnrollmentId, BatchId, BatchRole, BatchStatus, Course, CourseEnrollment,
+    CourseEnrollmentId, CourseId, EnrollmentStatus, Identity, IdentityCredentials, IdentityId, Node,
+    NodeId, NodeType, Tenant, TenantId, User, UserId,
 };
 
 // DTO импорта и синхронизации

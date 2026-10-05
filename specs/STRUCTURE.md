@@ -115,6 +115,9 @@
     - `tenant.rs` — `TenantRepository` (CRUD для тенантов).
     - `course.rs` — `CourseRepository` (CRUD для курсов: `create`, `find_by_id`, `find_by_tenant`, `update`, `delete`, `publish_version`).
     - `node.rs` — `NodeRepository` (CRUD для узлов иерархии с ltree: `create`, `find_by_id`, `find_children`, `find_subtree`, `find_course_tree`, `update`, `move_node`, `delete`, `reorder`).
+	- `batch.rs` — `BatchRepository` (CRUD для потоков: `create`, `find_by_id`, `find_by_tenant`, `find_active_batches`, `update`, `delete`).
+    - `batch_enrollment.rs` — `BatchEnrollmentRepository` (зачисления в потоки: `enroll`, `unenroll`, `find_by_batch`, `find_by_user`, `update_role`).
+    - `course_enrollment.rs` — `CourseEnrollmentRepository` (индивидуальные зачисления на курсы: `enroll`, `unenroll`, `find_by_course`, `find_by_user`).
   - `entities/` — заглушка для будущих сгенерированных сущностей SeaORM (read-only типы).
 - `src/http/` — HTTP-слой на базе Axum:
   - `middleware.rs` — JWT-аутентификация: извлечение Bearer-токена из заголовка `Authorization`, валидация через `JwtManager`, инъекция `IdentityId` и `TenantId` в `Request::extensions`. Refresh/Session токены отклоняются для защищённых маршрутов.
@@ -125,6 +128,9 @@
     - `user.rs` — пользователи: `create_user`, `get_user` (tenant-scoped, защищены JWT) + `CreateUserRequest`.
     - `course.rs` — курсы: `list_courses`, `create_course`, `get_course`, `update_course`, `delete_course`, `publish_course` (tenant-scoped, защищены JWT) + DTO.
     - `node.rs` — узлы иерархии: `create_root_node`, `create_child_node`, `get_node`, `get_course_tree`, `get_node_subtree`, `update_node`, `move_node`, `delete_node` (tenant-scoped, защищены JWT) + DTO.
+	- `batch.rs` — потоки: `list_batches`, `create_batch`, `get_batch`, `update_batch`, `delete_batch` + DTO.
+    - `batch_enrollment.rs` — зачисления в потоки: `enroll_to_batch`, `unenroll_from_batch`, `list_batch_enrollments`, `update_batch_enrollment_role` + DTO.
+    - `course_enrollment.rs` — индивидуальные зачисления на курсы: `enroll_to_course`, `unenroll_from_course`, `list_course_enrollments`, `list_user_course_enrollments` + DTO.
   - `router.rs` — сборка Axum-роутера с разделением на публичные (`/api/v1/auth/*`, `/api/v1/tenants/*`) и защищённые JWT (`/api/v1/users/*`, `/api/v1/courses/*`, `/api/v1/nodes/*`) маршруты.
 - `src/lrs/` — низкоуровневая обработка записей LRS (пакетный импорт в TimescaleDB или ClickHouse).
 - `src/etl/` — потоковые чанк-парсеры кастомного импорта пользователей (Custom ETL Mapper).
@@ -137,6 +143,7 @@
 Миграции БД лежат в каталоге `crates/api/migrations/` (см. `MIGRATIONS.md`) и не являются модулем внутри `api`. Текущие миграции:
 - `20261003000001_init_rls_and_tenants.sql` — таблицы `tenants`, `identities` (без RLS), `users` (с RLS, связь identity-tenant), политики RLS, индексы, CHECK constraints.
 - `20261006000001_create_content_hierarchy.sql` — таблицы `courses` (с RLS), `nodes` (с RLS, ltree-иерархия: parent_id + path), расширение ltree, GiST/GIN индексы.
+- `20261007000001_create_batches_and_enrollments.sql` — таблицы `batches`, `batch_courses`, `batch_enrollments`, `course_enrollments` (все tenant-scoped, RLS), переименование `courses.certification_rules` → `courses.completion_criteria`.
 
 ### 3.5. Крейт: `crates/client` (Isomorphic Frontend, PWA & RPC)
 

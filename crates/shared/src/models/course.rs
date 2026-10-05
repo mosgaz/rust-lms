@@ -67,6 +67,7 @@ pub struct Course {
     pub description_i18n: Option<serde_json::Value>,
     /// Текущая версия структуры курса (монотонно растёт при публикации).
     pub version: i32,
-    /// Правила автоматической выдачи сертификатов при завершении курса.
-    pub certification_rules: Option<serde_json::Value>,
+    /// Настраиваемые критерии завершения курса (JSONB).
+    /// Пример: {"mode": "all_of", "rules": [{"type": "min_progress", "value": 0.8}]}
+    pub completion_criteria: Option<serde_json::Value>,
 }

@@ -13,6 +13,8 @@ pub mod rls;
 
 pub use pool::DatabasePool;
 pub use repositories::{
+    BatchEnrollmentRepository, BatchEnrollmentRepositoryError, BatchRepository,
+    BatchRepositoryError, CourseEnrollmentRepository, CourseEnrollmentRepositoryError,
     CourseRepository, CourseRepositoryError, IdentityRepository, IdentityRepositoryError,
     NodeRepository, NodeRepositoryError, TenantRepository, TenantRepositoryError, UserRepository,
     UserRepositoryError,

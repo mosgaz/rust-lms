@@ -489,6 +489,123 @@
 - **Назначение:** Удаление узла. **Каскадно удаляет всё поддерево** (через FK `ON DELETE CASCADE` на `parent_id`).
 - **Response (204 No Content).**
 
+### 4.4. Потоки и зачисления (Batches & Enrollments)
+
+Потоки (Batches) — это группы студентов, проходящих курсы вместе в определённые сроки. Поддерживаются 4 роли участников: `student`, `instructor`, `tutor`, `observer`. Индивидуальные зачисления на курсы (self-paced) реализованы через отдельную таблицу `course_enrollments`.
+
+> **См. также:** `DB_SCHEMA.md` §1.3 (описание таблиц `batches`, `batch_courses`, `batch_enrollments`, `course_enrollments`).
+
+#### `GET /api/v1/batches`
+- **Уровень доступа:** Локальный токен тенанта.
+- **Назначение:** Получение списка потоков текущего тенанта (пагинация: limit 100, offset 0).
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid-v4",
+      "tenant_id": "uuid-v4",
+      "title": "Осенний поток 2026",
+      "status": "active",
+      "start_date": "2026-09-01T00:00:00Z",
+      "end_date": "2026-12-31T23:59:59Z"
+    }
+  ],
+  "error": null
+}
+```
+
+#### `POST /api/v1/batches`
+- **Уровень доступа:** Локальный токен тенанта со scope `batches:write`.
+- **Назначение:** Создание нового потока.
+- **Request:**
+```json
+{
+  "title": "Осенний поток 2026",
+  "description": "Корпоративное обучение",
+  "status": "draft",
+  "start_date": "2026-09-01T00:00:00Z",
+  "end_date": "2026-12-31T23:59:59Z",
+  "enrollment_deadline": "2026-08-15T23:59:59Z"
+}
+```
+- **Response (201 Created):** Объект потока.
+
+#### `GET /api/v1/batches/:id`
+- **Уровень доступа:** Локальный токен тенанта.
+- **Ошибки:** `404 Not Found` (поток не существует или принадлежит другому тенанту — RLS).
+
+#### `PATCH /api/v1/batches/:id`
+- **Уровень доступа:** Локальный токен тенанта со scope `batches:write`.
+- **Назначение:** Частичное обновление метаданных потока.
+
+#### `DELETE /api/v1/batches/:id`
+- **Уровень доступа:** Локальный токен тенанта со scope `batches:write`.
+- **Назначение:** Удаление потока. **Каскадно удаляет все связанные `batch_courses` и `batch_enrollments`**.
+- **Response (204 No Content).**
+
+#### `POST /api/v1/batches/:id/enroll`
+- **Уровень доступа:** Локальный токен тенанта со scope `batches:write`.
+- **Назначение:** Зачисление пользователя в поток с указанной ролью.
+- **Request:**
+```json
+{
+  "user_id": "uuid-v4",
+  "role": "student"
+}
+```
+- **Response (201 Created):** Объект зачисления.
+- **Ошибки:** 
+  - `404 Not Found` (поток не существует)
+  - `409 Conflict` (пользователь уже зачислен в поток)
+
+#### `DELETE /api/v1/batches/:batch_id/enroll/:user_id`
+- **Уровень доступа:** Локальный токен тенанта со scope `batches:write`.
+- **Назначение:** Отчисление пользователя из потока (**soft delete**: статус меняется на `dropped`).
+- **Response (204 No Content).**
+
+#### `PATCH /api/v1/batches/:batch_id/enroll/:user_id`
+- **Уровень доступа:** Локальный токен тенанта со scope `batches:write`.
+- **Назначение:** Изменение роли участника потока.
+- **Request:**
+```json
+{
+  "role": "instructor"
+}
+```
+
+#### `GET /api/v1/batches/:id/enrollments`
+- **Уровень доступа:** Локальный токен тенанта.
+- **Назначение:** Получение списка участников потока (студенты, инструкторы, тьюторы, наблюдатели).
+
+#### `POST /api/v1/courses/:id/enroll`
+- **Уровень доступа:** Локальный токен тенанта со scope `courses:write`.
+- **Назначение:** Индивидуальное зачисление пользователя на курс (self-paced).
+- **Request:**
+```json
+{
+  "user_id": "uuid-v4"
+}
+```
+- **Response (201 Created):** Объект зачисления с `progress = 0.0`, `status = "active"`.
+- **Ошибки:** 
+  - `404 Not Found` (курс не существует)
+  - `409 Conflict` (пользователь уже зачислен)
+
+#### `DELETE /api/v1/courses/:course_id/enroll/:user_id`
+- **Уровень доступа:** Локальный токен тенанта со scope `courses:write`.
+- **Назначение:** Отчисление пользователя с курса (soft delete).
+- **Response (204 No Content).**
+
+#### `GET /api/v1/courses/:id/enrollments`
+- **Уровень доступа:** Локальный токен тенанта.
+- **Назначение:** Получение списка студентов курса.
+
+#### `GET /api/v1/users/:id/enrollments`
+- **Уровень доступа:** Локальный токен тенанта.
+- **Назначение:** Получение всех курсов, на которые зачислен пользователь.
+
 ---
 
 ## 5. Feature Flags

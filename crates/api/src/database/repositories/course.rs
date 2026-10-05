@@ -46,7 +46,7 @@ impl CourseRepository {
         title_i18n: Option<JsonValue>,
         description: Option<&str>,
         description_i18n: Option<JsonValue>,
-        certification_rules: Option<JsonValue>,
+        completion_criteria: Option<JsonValue>,
     ) -> Result<Course, CourseRepositoryError> {
         let course_id = CourseId::new();
 
@@ -57,9 +57,9 @@ impl CourseRepository {
 
         let row: CourseRow = sqlx::query_as(
             r#"
-            INSERT INTO courses (id, tenant_id, title, title_i18n, description, description_i18n, version, certification_rules)
+            INSERT INTO courses (id, tenant_id, title, title_i18n, description, description_i18n, version, completion_criteria)
             VALUES ($1, $2, $3, $4, $5, $6, 1, $7)
-            RETURNING id, tenant_id, title, title_i18n, description, description_i18n, version, certification_rules
+            RETURNING id, tenant_id, title, title_i18n, description, description_i18n, version, completion_criteria
             "#,
         )
         .bind(course_id.0)
@@ -68,7 +68,7 @@ impl CourseRepository {
         .bind(&title_i18n)
         .bind(description)
         .bind(&description_i18n)
-        .bind(&certification_rules)
+        .bind(&completion_criteria)
         .fetch_one(&mut *tx)
         .await?;
 
@@ -89,7 +89,7 @@ impl CourseRepository {
 
         let row: CourseRow = sqlx::query_as(
             r#"
-            SELECT id, tenant_id, title, title_i18n, description, description_i18n, version, certification_rules
+            SELECT id, tenant_id, title, title_i18n, description, description_i18n, version, completion_criteria
             FROM courses WHERE id = $1
             "#,
         )
@@ -116,7 +116,7 @@ impl CourseRepository {
 
         let rows: Vec<CourseRow> = sqlx::query_as(
             r#"
-            SELECT id, tenant_id, title, title_i18n, description, description_i18n, version, certification_rules
+            SELECT id, tenant_id, title, title_i18n, description, description_i18n, version, completion_criteria
             FROM courses ORDER BY created_at DESC LIMIT $1 OFFSET $2
             "#,
         )
@@ -138,7 +138,7 @@ impl CourseRepository {
         title_i18n: Option<JsonValue>,
         description: Option<&str>,
         description_i18n: Option<JsonValue>,
-        certification_rules: Option<JsonValue>,
+        completion_criteria: Option<JsonValue>,
     ) -> Result<Course, CourseRepositoryError> {
         tracing::info!(course_id = %course_id, "Updating course");
 
@@ -152,17 +152,17 @@ impl CourseRepository {
                 title_i18n = COALESCE($2, title_i18n),
                 description = COALESCE($3, description),
                 description_i18n = COALESCE($4, description_i18n),
-                certification_rules = COALESCE($5, certification_rules),
+                completion_criteria = COALESCE($5, completion_criteria),
                 updated_at = NOW()
             WHERE id = $6
-            RETURNING id, tenant_id, title, title_i18n, description, description_i18n, version, certification_rules
+            RETURNING id, tenant_id, title, title_i18n, description, description_i18n, version, completion_criteria
             "#,
         )
         .bind(title)
         .bind(&title_i18n)
         .bind(description)
         .bind(&description_i18n)
-        .bind(&certification_rules)
+        .bind(&completion_criteria)
         .bind(course_id.0)
         .fetch_optional(&mut *tx)
         .await?
@@ -233,7 +233,7 @@ impl CourseRepository {
             description: row.description,
             description_i18n: row.description_i18n,
             version: row.version,
-            certification_rules: row.certification_rules,
+            completion_criteria: row.completion_criteria,
         }
     }
 }
@@ -248,7 +248,7 @@ struct CourseRow {
     description: Option<String>,
     description_i18n: Option<JsonValue>,
     version: i32,
-    certification_rules: Option<JsonValue>,
+    completion_criteria: Option<JsonValue>,
 }
 
 #[cfg(test)]
@@ -272,7 +272,7 @@ mod tests {
             description: Some("Description".to_string()),
             description_i18n: None,
             version: 1,
-            certification_rules: None,
+            completion_criteria: None,
         };
     }
 }

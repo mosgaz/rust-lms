@@ -14,8 +14,16 @@
 //! изоляции данных между арендаторами (см. ADR 2026.09.28-0001).
 
 // TODO: раскомментировать при наполнении файлов реализацией
-// pub mod batch;
 // pub mod certificate;
+
+/// Модель потока (Batch).
+pub mod batch;
+
+/// Модель зачисления пользователя в поток.
+pub mod batch_enrollment;
+
+/// Модель индивидуального зачисления пользователя на курс.
+pub mod course_enrollment;
 
 /// Модель курса (Course) — основной единицы учебного контента.
 pub mod course;
@@ -35,8 +43,10 @@ pub mod tenant;
 /// Модель связи личности с тенантом (User).
 pub mod user;
 
-// pub use batch::{Batch, BatchId};
 // pub use certificate::{Certificate, CertificateId};
+pub use batch::{Batch, BatchId, BatchStatus};
+pub use batch_enrollment::{BatchEnrollment, BatchEnrollmentId, BatchRole, EnrollmentStatus};
+pub use course_enrollment::{CourseEnrollment, CourseEnrollmentId};
 pub use course::{Course, CourseId};
 pub use credentials::IdentityCredentials;
 pub use identity::{Identity, IdentityId};

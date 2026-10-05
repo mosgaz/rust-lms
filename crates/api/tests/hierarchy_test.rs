@@ -1,83 +1,26 @@
 // crates/api/tests/hierarchy_test.rs
 //! Интеграционные тесты для иерархии контента (Courses & Nodes).
-//!
-//! Проверяют:
-//! - Создание и получение дерева курса (ltree)
-//! - Перемещение узлов и корректное обновление path
-//! - RLS-изоляцию между тенантами
-//! - Каскадное удаление
 
 use axum::{
     body::Body,
     http::{self, Request, StatusCode},
-    Router,
 };
 use http_body_util::BodyExt;
-use rust_lms_api::{create_router, JwtConfig, JwtManager, PasswordHasher};
-use rust_lms_shared::{CourseId, IdentityId, NodeId, NodeType, TenantId, UserId};
+use rust_lms_api::{create_router, JwtConfig};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use tower::ServiceExt;
 
-// --- Вспомогательные функции ---
-
-async fn create_test_tenant(pool: &PgPool, slug: &str) -> TenantId {
-    let tenant_id = TenantId::new();
-    sqlx::query("INSERT INTO tenants (id, slug, name, is_active) VALUES ($1, $2, $3, true)")
-        .bind(tenant_id.0)
-        .bind(slug)
-        .bind(format!("Test Tenant {}", slug))
-        .execute(pool)
-        .await
-        .expect("Failed to create test tenant");
-    tenant_id
-}
-
-async fn create_test_identity(pool: &PgPool, email: &str, tenant_id: TenantId) -> IdentityId {
-    let identity_id = IdentityId::new();
-    let hasher = PasswordHasher::new();
-    let hash = hasher.hash("TestPassword123!").unwrap();
-    
-    sqlx::query(
-        "INSERT INTO identities (id, email, password_hash, preferred_tenant_id) VALUES ($1, $2, $3, $4)"
-    )
-    .bind(identity_id.0)
-    .bind(email)
-    .bind(hash)
-    .bind(tenant_id.0)
-    .execute(pool)
-    .await
-    .expect("Failed to create test identity");
-    identity_id
-}
-
-async fn create_test_user(pool: &PgPool, identity_id: IdentityId, tenant_id: TenantId) -> UserId {
-    let user_id = UserId::new();
-    sqlx::query("INSERT INTO users (id, tenant_id, identity_id, is_active) VALUES ($1, $2, $3, true)")
-        .bind(user_id.0)
-        .bind(tenant_id.0)
-        .bind(identity_id.0)
-        .execute(pool)
-        .await
-        .expect("Failed to create test user");
-    user_id
-}
-
-fn get_auth_token(tenant_id: TenantId, identity_id: IdentityId) -> String {
-    let jwt_manager = JwtManager::new(JwtConfig::default());
-    jwt_manager.generate_access_token(identity_id, tenant_id).unwrap()
-}
-
-// --- Тесты ---
+mod common;
 
 /// Тест 1: Создание иерархии и получение полного дерева курса
 #[sqlx::test(migrations = "migrations")]
 async fn test_create_and_get_course_tree(pool: PgPool) {
     // Arrange
-    let tenant_id = create_test_tenant(&pool, "tree-tenant").await;
-    let identity_id = create_test_identity(&pool, "tree@example.com", tenant_id).await;
-    let _user_id = create_test_user(&pool, identity_id, tenant_id).await;
-    let token = get_auth_token(tenant_id, identity_id);
+    let tenant_id = common::create_test_tenant(&pool, "tree-tenant").await;
+    let identity_id = common::create_test_identity(&pool, "tree@example.com", tenant_id).await;
+    let _user_id = common::create_test_user(&pool, identity_id, tenant_id).await;
+    let token = common::get_auth_token(tenant_id, identity_id);
 
     let router = create_router(pool.clone(), JwtConfig::default());
 
@@ -146,25 +89,20 @@ async fn test_create_and_get_course_tree(pool: PgPool) {
     
     // Assert
     let nodes = tree_json["data"].as_array().unwrap();
-    assert_eq!(nodes.len(), 2); // Chapter и Lesson
+    assert_eq!(nodes.len(), 2);
     
-    // Проверяем, что Lesson является потомком Chapter (проверка ltree логики)
     let lesson = nodes.iter().find(|n| n["title"] == "Lesson 1.1").unwrap();
     let chapter = nodes.iter().find(|n| n["title"] == "Chapter 1").unwrap();
-    
-    // В реальном ltree path lesson должен начинаться с path chapter
-    // (Здесь мы проверяем косвенно через parent_id, так как path не возвращается в DTO, что правильно)
     assert_eq!(lesson["parent_id"].as_str().unwrap(), chapter["id"].as_str().unwrap());
 }
 
 /// Тест 2: Перемещение узла (проверка обновления ltree path)
 #[sqlx::test(migrations = "migrations")]
 async fn test_move_node_updates_path(pool: PgPool) {
-    // Arrange
-    let tenant_id = create_test_tenant(&pool, "move-tenant").await;
-    let identity_id = create_test_identity(&pool, "move@example.com", tenant_id).await;
-    let _user_id = create_test_user(&pool, identity_id, tenant_id).await;
-    let token = get_auth_token(tenant_id, identity_id);
+    let tenant_id = common::create_test_tenant(&pool, "move-tenant").await;
+    let identity_id = common::create_test_identity(&pool, "move@example.com", tenant_id).await;
+    let _user_id = common::create_test_user(&pool, identity_id, tenant_id).await;
+    let token = common::get_auth_token(tenant_id, identity_id);
 
     let router = create_router(pool.clone(), JwtConfig::default());
 
@@ -219,17 +157,15 @@ async fn test_move_node_updates_path(pool: PgPool) {
 /// Тест 3: RLS-изоляция (попытка получить дерево чужого курса)
 #[sqlx::test(migrations = "migrations")]
 async fn test_hierarchy_rls_isolation(pool: PgPool) {
-    // Arrange: Tenant A
-    let tenant_a = create_test_tenant(&pool, "tenant-a").await;
-    let identity_a = create_test_identity(&pool, "user_a@example.com", tenant_a).await;
-    let _user_a = create_test_user(&pool, identity_a, tenant_a).await;
-    let token_a = get_auth_token(tenant_a, identity_a);
+    let tenant_a = common::create_test_tenant(&pool, "tenant-a").await;
+    let identity_a = common::create_test_identity(&pool, "user_a@example.com", tenant_a).await;
+    let _user_a = common::create_test_user(&pool, identity_a, tenant_a).await;
+    let token_a = common::get_auth_token(tenant_a, identity_a);
 
-    // Arrange: Tenant B
-    let tenant_b = create_test_tenant(&pool, "tenant-b").await;
-    let identity_b = create_test_identity(&pool, "user_b@example.com", tenant_b).await;
-    let _user_b = create_test_user(&pool, identity_b, tenant_b).await;
-    let token_b = get_auth_token(tenant_b, identity_b);
+    let tenant_b = common::create_test_tenant(&pool, "tenant-b").await;
+    let identity_b = common::create_test_identity(&pool, "user_b@example.com", tenant_b).await;
+    let _user_b = common::create_test_user(&pool, identity_b, tenant_b).await;
+    let token_b = common::get_auth_token(tenant_b, identity_b);
 
     let router = create_router(pool.clone(), JwtConfig::default());
 
@@ -250,6 +186,6 @@ async fn test_hierarchy_rls_isolation(pool: PgPool) {
 
     let resp = router.oneshot(get_req).await.unwrap();
 
-    // Assert: RLS срабатывает, Tenant B видит 404 (Not Found), а не 403, чтобы не раскрывать факт существования
+    // Assert: RLS срабатывает, Tenant B видит 404
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
