@@ -11,7 +11,8 @@ use rust_lms_shared::{Tenant, TenantId, User, UserId};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::database::{TenantRepository, UserRepository};
+use crate::auth::PasswordHasher;
+use crate::database::{TenantRepository, UserRepository, UserRepositoryError};
 
 /// Состояние приложения, общее для всех handlers.
 #[derive(Clone)]
@@ -36,6 +37,8 @@ pub struct CreateTenantRequest {
 pub struct CreateUserRequest {
     /// Электронная почта пользователя.
     pub email: String,
+    /// Исходный пароль (будет захэширован Argon2id перед сохранением).
+    pub password: String,
 }
 
 /// Унифицированный ответ API.
@@ -132,6 +135,7 @@ pub async fn get_tenant(
 /// # Errors
 ///
 /// Возвращает `StatusCode::INTERNAL_SERVER_ERROR`, если не удалось создать пользователя.
+/// Возвращает `StatusCode::BAD_REQUEST`, если email уже занят или пароль невалиден.
 pub async fn create_user(
     State(state): State<AppState>,
     Extension(tenant_id): Extension<TenantId>,
@@ -139,7 +143,36 @@ pub async fn create_user(
 ) -> impl IntoResponse {
     tracing::info!(tenant_id = %tenant_id, email = %payload.email, "Creating user via API");
 
-    match state.user_repo.create(tenant_id, &payload.email).await {
+    // Валидация длины пароля
+    if payload.password.len() < 8 {
+        let response: ApiResponse<User> = ApiResponse {
+            success: false,
+            data: None,
+            error: Some("Password must be at least 8 characters long".to_string()),
+        };
+        return (StatusCode::BAD_REQUEST, Json(response)).into_response();
+    }
+
+    // Хешируем пароль через Argon2id
+    let hasher = PasswordHasher::new();
+    let password_hash = match hasher.hash(&payload.password) {
+        Ok(hash) => hash,
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to hash password");
+            let response: ApiResponse<User> = ApiResponse {
+                success: false,
+                data: None,
+                error: Some("Internal error during password hashing".to_string()),
+            };
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+        }
+    };
+
+    match state
+        .user_repo
+        .create_with_password(tenant_id, &payload.email, &password_hash)
+        .await
+    {
         Ok(user) => {
             let response = ApiResponse {
                 success: true,
@@ -150,12 +183,16 @@ pub async fn create_user(
         }
         Err(e) => {
             tracing::error!(error = %e, "Failed to create user");
+            let status = match &e {
+                UserRepositoryError::EmailAlreadyExists { .. } => StatusCode::CONFLICT,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
             let response: ApiResponse<User> = ApiResponse {
                 success: false,
                 data: None,
                 error: Some(e.to_string()),
             };
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+            (status, Json(response)).into_response()
         }
     }
 }
