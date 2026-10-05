@@ -12,6 +12,10 @@
 //! Иерархия контента:
 //! - `Course` — основная единица учебного контента.
 //! - `Node` — единая сущность для program/course/chapter/topic/lesson.
+//!
+//! Прогресс обучения:
+//! - `LessonProgress` — прогресс студента по уроку.
+//! - `CompletionCriteria` — критерии завершения курса.
 
 #![deny(missing_docs)]
 
@@ -24,9 +28,15 @@ pub mod models;
 
 // Базовые идентификаторы и сущности
 pub use models::{
-    Batch, BatchEnrollment, BatchEnrollmentId, BatchId, BatchRole, BatchStatus, Course, CourseEnrollment,
-    CourseEnrollmentId, CourseId, EnrollmentStatus, Identity, IdentityCredentials, IdentityId, Node,
-    NodeId, NodeType, Tenant, TenantId, User, UserId,
+    Course, CourseId, Identity, IdentityCredentials, IdentityId, Node, NodeId, NodeType, Tenant,
+    TenantId, User, UserId,
+};
+
+// Прогресс обучения и критерии завершения
+pub use models::{
+    CompletionCriteria, CompletionCriteriaError, CompletionMode, CompletionRule,
+    CourseProgressSummary, LessonProgress, LessonProgressId, LessonStatus, ProgressResponse,
+    ProgressUpdateRequest, ProgressUpdatedEvent,
 };
 
 // DTO импорта и синхронизации
