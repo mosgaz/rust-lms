@@ -73,9 +73,15 @@
 
 Абсолютно плоский крейт без привязки к СУБД или UI. Содержит структуры данных, компилируемые как под `wasm32`, так и под нативный x86_64/arm64 сервер.
 
-- `src/models/` — базовые структуры сущностей с типобезопасными идентификаторами и строгой привязкой к `TenantId` для мультиарендности (ADR 2026.09.28-0001). Включает `Tenant`, `User`, а также заглушки для будущих сущностей: `Course`, `Program`, `Batch`, `Certificate`.
+- `src/models/` — базовые структуры сущностей с типобезопасными идентификаторами и строгой привязкой к `TenantId` для мультиарендности (ADR 2026.09.28-0001). Реализованы:
+  - `tenant.rs` — `TenantId`, `Tenant`.
+  - `user.rs` — `UserId`, `User`.
+  - `credentials.rs` — `Credentials` (email + password_hash для аутентификации).
+  - Заглушки для будущих сущностей: `Course`, `Program`, `Batch`, `Certificate`.
 - `src/dto/` — запросы и ответы API-интерфейсов (`ImportPayload`, `SyncPackage`).
 - `src/xapi/` — строгие иммутабельные типы для генерации xAPI Statements.
+
+**Особенность:** зависимость `sqlx` является опциональной и активируется через фичу `server`, что позволяет компилировать `shared` как для сервера (с `sqlx::Type` для идентификаторов), так и для клиента (`wasm32`) без нативных зависимостей.
 
 ### 3.2. Крейт: `crates/ui` (Shared UI Library)
 
@@ -91,15 +97,24 @@
 
 Серверное бэкенд-ядро обработки данных. **Импорт макросов Leptos сюда аппаратно запрещен.**
 
+- `src/auth/` — модуль аутентификации:
+  - `password.rs` — `PasswordHasher` на базе Argon2id (RFC 9106, PHC-формат хэшей).
+  - `jwt.rs` — `JwtManager`, `JwtClaims`, `JwtConfig`, `TokenType` (Access/Refresh). Токены содержат обязательный claim `tenant_id` для интеграции с RLS (ADR 2026.09.28-0001).
+  - `service.rs` — `AuthService` — единая точка входа для операций `login`/`refresh`, координирующая `UserRepository`, `PasswordHasher` и `JwtManager`.
 - `src/database/` — менеджер пула соединений SQLx и RLS-интерцептор:
   - `pool.rs` — `DatabasePool` с конфигурируемыми лимитами соединений.
   - `rls.rs` — `RlsContext` для установки сессионной переменной `app.current_tenant_id` (см. `CODING_STANDARDS.md` §2.1 и ADR 2026.09.28-0001).
-  - `repositories/` — базовые репозитории (`TenantRepository`, `UserRepository`) с принудительным применением RLS-контекста в транзакциях.
+  - `repositories/` — базовые репозитории:
+    - `tenant.rs` — `TenantRepository` (CRUD для тенантов).
+    - `user.rs` — `UserRepository` (CRUD для пользователей, включая `create_with_password` и `find_credentials_by_email`).
   - `entities/` — заглушка для будущих сгенерированных сущностей SeaORM (read-only типы).
 - `src/http/` — HTTP-слой на базе Axum:
-  - `middleware.rs` — извлечение `TenantId` из заголовка `X-Tenant-ID` и инъекция в `Request::extensions`.
-  - `handlers.rs` — REST-обработчики для CRUD-операций над тенантами и пользователями с унифицированным `ApiResponse<T>`.
-  - `router.rs` — сборка Axum-роутера с разделением на публичные и tenant-scoped маршруты.
+  - `middleware.rs` — JWT-аутентификация: извлечение Bearer-токена из заголовка `Authorization`, валидация через `JwtManager`, инъекция `TenantId` и `UserId` в `Request::extensions`. Refresh-токены отклоняются для защищённых маршрутов.
+  - `handlers.rs` — REST-обработчики с унифицированным `ApiResponse<T>`:
+    - Аутентификация: `login`, `refresh`.
+    - Тенанты: `create_tenant`, `get_tenant` (публичные).
+    - Пользователи: `create_user`, `get_user` (tenant-scoped, защищены JWT).
+  - `router.rs` — сборка Axum-роутера с разделением на публичные (`/api/v1/auth/*`, `/api/v1/tenants/*`) и защищённые JWT (`/api/v1/users/*`) маршруты.
 - `src/lrs/` — низкоуровневая обработка записей LRS (пакетный импорт в TimescaleDB или ClickHouse).
 - `src/etl/` — потоковые чанк-парсеры кастомного импорта пользователей (Custom ETL Mapper).
 - `src/scim/` — маппинг SCIM 2.0 (RFC 7643 / 7644) на внутренние сущности `users` / `batches` (см. `OPEN_API.md` §3.5).
@@ -108,7 +123,9 @@
 - `src/features/` — Feature Flags: чтение/запись `feature_flags` и `tenant_feature_flags`, in-memory кэш, LISTEN/NOTIFY-слушатель, API-контроллеры (см. `FEATURE_FLAGS.md`).
 - `src/sbom/` — генерация SBOM (CycloneDX) для WASM-плагинов, сканирование уязвимостей через `osv-scanner`, интеграция с Revocation List (см. ADR `2026.09.29-0010.md`).
 
-Миграции БД лежат в корневом каталоге `migrations/` (см. `MIGRATIONS.md`) и не являются модулем внутри `api`.
+Миграции БД лежат в каталоге `crates/api/migrations/` (см. `MIGRATIONS.md`) и не являются модулем внутри `api`. Текущие миграции:
+- `20261003000001_init_rls_and_tenants.sql` — таблицы `tenants` и `users` с политиками RLS.
+- `20261005000001_add_password_hash_to_users.sql` — колонка `password_hash` (PHC-формат Argon2id), композитный индекс `(tenant_id, email)`, ограничения длины.
 
 ### 3.5. Крейт: `crates/client` (Isomorphic Frontend, PWA & RPC)
 
@@ -137,7 +154,12 @@
 
 Чисто серверное нативное приложение. Единственная точка входа, содержащая функцию `fn main()`. Порт по умолчанию: **3720**.
 
-- `src/main.rs` — точка входа: инициализация `tracing-subscriber` с `env-filter`, загрузка конфигурации, создание `DatabasePool`, монтирование Axum-роутера из `api` с `TraceLayer`, запуск TCP-слушателя с graceful shutdown (SIGINT/SIGTERM).
+- `src/main.rs` — точка входа:
+  - Инициализация `tracing-subscriber` с `env-filter`.
+  - Загрузка конфигурации из `config.toml` с переопределением через переменные окружения `RUST_LMS_*`.
+  - Создание `DatabasePool` и `JwtConfig` (секрет и TTL токенов из env: `RUST_LMS_JWT_SECRET`, `RUST_LMS_JWT_ACCESS_TTL`, `RUST_LMS_JWT_REFRESH_TTL`).
+  - Монтирование Axum-роутера из `api` с `TraceLayer`.
+  - Запуск TCP-слушателя с graceful shutdown (SIGINT/SIGTERM).
 - `src/config.rs` — `AppConfig` с загрузкой из `config.toml` и переопределением через переменные окружения с префиксом `RUST_LMS_` (разделитель `__`). Содержит `ServerConfig` (host, port) и `DatabaseConfig` (url, max/min connections).
 - Считывает инфраструктурную конфигурацию `config.toml` (корень репозитория).
 - Инициализирует пулы подключений `SQLx` к PostgreSQL и ClickHouse/TimescaleDB.
@@ -171,3 +193,4 @@
 2. **Изоляция WASM-контура:** Крейты `ui`, `icons` и `client` компилируются под таргет `wasm32-unknown-unknown` для работы в браузере. Им запрещено напрямую использовать нативные методы `crates/api` или `crates/server`. Вся связь между фронтенд-компонентами и бэкенд-логикой идет строго через объявления Leptos `#[server]` RPC-функций или асинхронные вызовы сетевого Open API.
 3. **Идемпотентность типов:** Общие структуры в `shared` должны использовать примитивы, одинаково сериализуемые как макросами `serde` для сервера, так и `serde_wasm_bindgen` для клиента.
 4. **Автономность CLI:** Крейт `cli` не зависит от `server` и `client`. Он может использовать `shared` и `api` (для доступа к БД), но не может импортировать Leptos-зависимости.
+5. **Условная компиляция `shared`:** Модели с атрибутом `#[sqlx(transparent)]` (например, `TenantId`, `UserId`) доступны только при включённой фиче `server`. Клиентский код (`client`) должен использовать модели через `serde`-сериализацию без прямого доступа к `sqlx`-типам.

@@ -4,7 +4,7 @@
 
 > Этот файл динамически обновляется AI-агентами после завершения каждого таска. Изменение статусов дублируется записью в `CHANGELOG.md`.
 
-**Текущий этап проекта:** активная реализация серверного ядра (`api` + `server`). Базовый HTTP-цикл (DTO → БД → REST → Axum-хост) замкнут.
+**Текущий этап проекта:** активная реализация серверного ядра (`api` + `server`). Базовый HTTP-цикл (DTO → БД → REST → Axum-хост) замкнут. **Аутентификация JWT полностью реализована** (Argon2id + access/refresh токены + RLS-интеграция).
 **Кодовая база:** активная разработка.
 
 ---
@@ -73,11 +73,16 @@
 
 | Компонент / Фича | Тип | Статус | Крейт-ответственный | Примечания / Ссылка на ADR |
 | :-- | :-: | :-: | :-- | :-- |
-| **Базовые DTO сущностей (Tenant, User)** | Реализация | 🟢 | `shared` | Структурированы в `models/`, типобезопасные ID (`TenantId`, `UserId`), строгая привязка к `TenantId`. ADR: `2026.09.28-0001.md`. |
-| **Мультиарендность (Strict Multi-tenancy)** | Реализация | 🟢 | `api` | RLS-интерцептор, репозитории и Axum middleware (`X-Tenant-ID`) реализованы. ADR: `2026.09.28-0001.md`. |
+| **Базовые DTO сущностей (Tenant, User, Credentials)** | Реализация | 🟢 | `shared` | Структурированы в `models/`, типобезопасные ID (`TenantId`, `UserId`), строгая привязка к `TenantId`. `Credentials` для аутентификации. ADR: `2026.09.28-0001.md`. |
+| **Мультиарендность (Strict Multi-tenancy)** | Реализация | 🟢 | `api` | RLS-интерцептор, репозитории и Axum middleware (JWT Bearer → `TenantId` из claims). ADR: `2026.09.28-0001.md`. |
+| **Хеширование паролей (Argon2id)** | Реализация | 🟢 | `api` | `PasswordHasher` с PHC-форматом, RFC 9106 compliant. 3 unit-теста. |
+| **JWT-инфраструктура (Access/Refresh)** | Реализация | 🟢 | `api` | `JwtManager`, `JwtClaims` с claim `tenant_id`, `TokenType` (Access/Refresh). Конфигурация через env `RUST_LMS_JWT_*`. 5 unit-тестов. |
+| **AuthService (login/refresh)** | Реализация | 🟢 | `api` | Единая точка входа для аутентификации, координирует `UserRepository`, `PasswordHasher`, `JwtManager`. 7 unit-тестов. |
+| **JWT middleware (Bearer auth)** | Реализация | 🟢 | `api` | Извлечение Bearer-токена, валидация, инъекция `TenantId`/`UserId` в extensions. Отклонение refresh-токенов. 6 integration-тестов. |
+| **REST-эндпоинты аутентификации** | Реализация | 🟢 | `api` | `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`. Унифицированный `ApiResponse<T>`. 3 unit-теста. |
 | **Динамический Provisioning тенантов** | Реализация | 🟡 | `api` | REST-эндпоинты `POST/GET /api/v1/tenants` реализованы. Ожидает расширения (обновление, деактивация, SCIM). |
-| **Точка входа сервера (Axum Host)** | Реализация | 🟢 | `server` | `main.rs`: tracing, config, DatabasePool, роутер из `api`, TraceLayer, graceful shutdown. Порт 3720. |
-| **Конфигурация приложения** | Реализация | 🟢 | `server` | `config.toml` + переменные окружения `RUST_LMS_*` через crate `config`. |
+| **Точка входа сервера (Axum Host)** | Реализация | 🟢 | `server` | `main.rs`: tracing, config, DatabasePool, **JwtConfig**, роутер из `api`, TraceLayer, graceful shutdown. Порт 3720. |
+| **Конфигурация приложения** | Реализация | 🟢 | `server` | `config.toml` + переменные окружения `RUST_LMS_*` (включая `RUST_LMS_JWT_SECRET`, `RUST_LMS_JWT_ACCESS_TTL`, `RUST_LMS_JWT_REFRESH_TTL`). |
 | **Слой открытых токенов и API Keys** | Реализация | 🔴 | `api` | SHA-256 хэширование Opaque-ключей в БД. |
 | **Конвейер кастомного импорта (ETL)** | Реализация | 🔴 | `api` | Потоковый парсинг CSV/XLSX чанками. |
 | **SCIM 2.0 (Users/Groups)** | Реализация | 🔴 | `api` | Real-time provisioning из HRIS/HRM. |
