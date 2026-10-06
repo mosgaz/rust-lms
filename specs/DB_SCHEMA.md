@@ -283,12 +283,21 @@ CREATE TABLE tenants (
   * Уникальный индекс `UNIQUE (user_id, node_id)`.
   * CHECK: `score >= 0 AND score <= 1` (если не NULL).
   * CHECK: `time_spent_seconds >= 0`, `attempt_count >= 0`, `last_position >= 0`.
-* **Индексы:** `idx_lesson_progress_tenant_id`, `idx_lesson_progress_user_id`, `idx_lesson_progress_node_id`, `idx_lesson_progress_status`, `idx_lesson_progress_completed` (partial index).
-* **RLS Политика:** `lesson_progress_tenant_isolation_policy`.
+* **Индексы:**
+  * `idx_lesson_progress_tenant_id` (для RLS).
+  * `idx_lesson_progress_user_id` (быстрый поиск прогресса студента).
+  * `idx_lesson_progress_node_id` (поиск по уроку).
+  * `idx_lesson_progress_status` (фильтрация по статусу).
+  * `idx_lesson_progress_completed` (partial index для завершённых уроков).
+* **RLS Политика:** `lesson_progress_tenant_isolation_policy` (фильтрация по `tenant_id = current_setting('app.current_tenant_id', true)`).
 
-> **Сервер вычисляет `passed`.** Клиент присылает только `score`, сервер вычисляет `passed = (score >= passing_score)` на основе `nodes.metadata.quiz.passing_score`.
+> **Сервер вычисляет `passed`.** Клиент присылает только `score`, сервер вычисляет `passed = (score >= passing_score)` на основе `nodes.metadata.quiz.passing_score`. Это защита от подделки результатов тестов.
 
-> **Архивные уроки.** Уроки с `nodes.is_archived = true` исключаются из пересчёта прогресса. Попытка обновить прогресс архивного урока возвращает `410 Gone`.
+> **Архивные уроки.** Уроки с `nodes.is_archived = true` исключаются из пересчёта прогресса курса. Попытка обновить прогресс архивного урока возвращает `410 Gone`.
+
+> **Идемпотентность.** Повторный запрос с теми же данными не перезаписывает `completed_at` — сохраняется время первого завершения.
+
+> **Триггер денормализации веса.** Поле `courses.metadata.total_weight` автоматически пересчитывается триггером `recalculate_course_total_weight()` при любых изменениях `nodes` (создание, удаление, архивация, изменение веса). Это исключает агрегатный запрос `SUM(weight)` при каждом upsert.
 
 #### Таблица: quizzes (Защищена RLS)
 

@@ -608,6 +608,8 @@
 
 ### 4.5. Прогресс обучения (Lesson Progress)
 
+Эндпоинты для отслеживания прогресса студентов по урокам и курсам. Все эндпоинты tenant-scoped, защищены JWT middleware.
+
 #### `POST /api/v1/progress`
 
 Обновляет прогресс урока для текущего пользователя. Автоматически пересчитывает прогресс курса и проверяет критерии завершения.
@@ -622,7 +624,7 @@
   "score": 0.85,                // опционально: 0.0–1.0 (для тестов)
   "time_spent_seconds": 1200,   // опционально
   "last_position": 300,         // опционально: позиция в медиа (секунды)
-  "client_modified_at": "2026-10-07T10:00:00Z"  // опционально, для PWA-sync
+  "client_modified_at": "2026-10-07T10:00:00Z"  // опционально, для PWA-sync (Этап 11)
 }
 ```
 
@@ -631,7 +633,19 @@
 {
   "success": true,
   "data": {
-    "lesson_progress": { "id": "uuid", "status": "completed", "score": 0.85, "passed": true, "...": "..." },
+    "lesson_progress": {
+      "id": "uuid",
+      "user_id": "uuid",
+      "node_id": "uuid",
+      "status": "completed",
+      "score": 0.85,
+      "passed": true,
+      "time_spent_seconds": 1200,
+      "attempt_count": 1,
+      "last_position": 300,
+      "completed_at": "2026-10-07T10:00:00Z",
+      "client_modified_at": "2026-10-07T10:00:00Z"
+    },
     "course_progress": 0.75,
     "course_status": "in_progress",
     "completion_triggered": false
@@ -644,6 +658,13 @@
 - `404 Not Found` — урок не найден (`NodeNotFound`).
 - `409 Conflict` — курс уже завершён (`CourseAlreadyCompleted`).
 - `410 Gone` — урок архивирован (`NodeArchived`).
+- `422 Unprocessable Entity` — невалидные данные (например, `score > 1.0`).
+
+**Архитектурные решения:**
+- **PATCH-семантика:** Все поля опциональны, кроме `node_id`.
+- **Сервер вычисляет `passed`:** Клиентский `passed` игнорируется.
+- **Идемпотентность:** Повторный запрос с теми же данными не перезаписывает `completed_at`.
+- **Транзакционность:** `SELECT FOR UPDATE` на `course_enrollments` защищает от race conditions.
 
 ---
 
@@ -680,7 +701,34 @@
 
 **Уровень доступа:** Tenant-scoped токен (студент, зачисленный в курс).
 
-**Успешный ответ (200 OK):** Массив уроков с полями `node_id`, `status`, `score`, `passed`, `time_spent_seconds`, `attempt_count`, `last_position`, `completed_at`. Уроки без прогресса возвращаются со `status: not_started`.
+**Успешный ответ (200 OK):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "node_id": "uuid",
+      "status": "completed",
+      "score": 0.85,
+      "passed": true,
+      "time_spent_seconds": 1200,
+      "attempt_count": 1,
+      "last_position": 0,
+      "completed_at": "2026-10-07T10:00:00Z"
+    },
+    {
+      "node_id": "uuid",
+      "status": "not_started",
+      "score": null,
+      "passed": null,
+      "time_spent_seconds": 0,
+      "attempt_count": 0,
+      "last_position": 0,
+      "completed_at": null
+    }
+  ]
+}
+```
 
 **Ошибки:** `403 Forbidden` (не зачислен), `404 Not Found` (курс не найден).
 
@@ -692,11 +740,28 @@
 
 **Уровень доступа:** Tenant-scoped токен (роль `instructor` или `admin`).
 
-**Параметры запроса:**
-- `limit` (integer, optional, default: 100).
-- `offset` (integer, optional, default: 0).
+**Параметры запроса (Query String):**
+- `limit` (integer, optional, default: 100, max: 1000) — максимальное количество записей.
+- `offset` (integer, optional, default: 0) — смещение от начала списка.
 
-**Успешный ответ (200 OK):** Массив `CourseProgressSummary` (user_id, progress, status, completed_at, completed_lessons_count, total_lessons_count, completed_lessons_weight, total_lessons_weight).
+**Успешный ответ (200 OK):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "user_id": "uuid",
+      "progress": 0.75,
+      "status": "in_progress",
+      "completed_at": null,
+      "completed_lessons_count": 3,
+      "total_lessons_count": 4,
+      "completed_lessons_weight": 3.0,
+      "total_lessons_weight": 4.0
+    }
+  ]
+}
+```
 
 **Ошибки:** `403 Forbidden` (недостаточно прав).
 
@@ -704,18 +769,25 @@
 
 #### `POST /api/v1/courses/:course_id/progress/recalculate`
 
-Принудительный пересчёт прогресса для всех зачисленных студентов курса.
+Принудительный пересчёт прогресса для всех зачисленных студентов курса. Полезно после массовых изменений в структуре курса (добавление/удаление уроков, изменение весов).
 
 **Уровень доступа:** Tenant-scoped токен (роль `instructor` или `admin`).
 
 **Успешный ответ (200 OK):**
 ```json
-{ "success": true, "data": { "rows_affected": 42 } }
+{
+  "success": true,
+  "data": {
+    "rows_affected": 42
+  }
+}
 ```
 
-> ⚠️ **Внимание:** Операция использует `FOR UPDATE OF ce` и блокирует все зачисления курса. Для больших курсов (1000+ студентов) рекомендуется запускать в нерабочее время.
+> ⚠️ **Предупреждение:** Эта операция использует `FOR UPDATE OF ce` и блокирует все зачисления курса на время выполнения. Для больших курсов (1000+ студентов) может занять несколько секунд. Рекомендуется запускать в нерабочее время или через background worker.
 
-**Ошибки:** `403 Forbidden` (недостаточно прав).
+**Ошибки:**
+- `403 Forbidden` — недостаточно прав (требуется `instructor` или `admin`).
+- `404 Not Found` — курс не найден.
 
 ---
 

@@ -11,7 +11,7 @@
 
 #### Этап 9: Progress Tracking & Completion
 - **Миграция `20261008000001_create_lesson_progress.sql`**: таблица `lesson_progress` (tenant-scoped, RLS) с полями `user_id`, `node_id`, `status`, `score`, `passed`, `time_spent_seconds`, `attempt_count`, `last_position`, `completed_at`, `client_modified_at` (зарезервировано для Этапа 11). CHECK-констрейнты, индексы, уникальный ключ `(user_id, node_id)`.
-- **Миграция `20261009000001_add_total_weight_to_courses.sql`**: денормализация `courses.metadata.total_weight` через триггер `recalculate_course_total_weight()` для O(1) пересчёта прогресса курса.
+- **Миграция `20261009000001_add_total_weight_to_courses.sql`**: денормализация `courses.metadata.total_weight` через триггер `recalculate_course_total_weight()` для O(1)-пересчёта прогресса курса.
 - **`shared/models/lesson_progress.rs`**: модели `LessonProgress`, `LessonProgressId`, `LessonStatus`, `ProgressUpdateRequest`, `ProgressResponse`, `CourseProgressSummary`, `ProgressUpdatedEvent` (заготовка для LRS).
 - **`shared/models/completion.rs`**: модель `CompletionCriteria` с 4 типами правил (`MinProgress`, `MinAvgQuizScore`, `RequiredNodes`, `AllLessonsCompleted`) и режимами `AllOf`/`AnyOf`.
 - **`api/database/repositories/lesson_progress.rs`**: `LessonProgressRepository` с методами `upsert_and_recalculate`, `get_user_course_progress`, `get_course_students_progress`, `recalculate_course_progress`, `is_instructor_or_admin`. Транзакционный пересчёт прогресса с `SELECT FOR UPDATE`.
