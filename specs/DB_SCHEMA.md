@@ -2,7 +2,7 @@
 
 **Файл спецификации:** `DB_SCHEMA.md`
 
-> Сводная картина — в [`ARCHITECTURE.md`](ARCHITECTURE.md) §1 и §3. Регламент миграций — в [`MIGRATIONS.md`](MIGRATIONS.md). Количественные NFR (RTO/RPO, лимиты) — в [`NFR.md`](NFR.md). Правила i18n и локализации — в [`STANDARDS.md`](STANDARDS.md) §«Локализация». Feature Flags — в [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md) и ADR [`2026.09.29-0009.md`](decisions/2026.09.29-0009.md). Identity-First архитектура — в ADR [`2026.10.05-0011.md`](decisions/2026.10.05-0011.md).
+> Сводная картина — в [`ARCHITECTURE.md`](ARCHITECTURE.md) §1 и §3. Регламент миграций — в [`MIGRATIONS.md`](MIGRATIONS.md). Количественные NFR (RTO/RPO, лимиты) — в [`NFR.md`](NFR.md). Правила i18n и локализации — в [`STANDARDS.md`](STANDARDS.md) §«Локализация». Feature Flags — в [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md) и ADR [`2026.09.29-0009.md`](decisions/2026.09.29-0009.md). Identity-First архитектура — в ADR [`2026.10.05-0011.md`](decisions/2026.10.05-0011.md). Обоснование выбора СУБД для LRS — в ADR [`20261006-0012-lrs-storage-decision.md`](decisions/20261006-0012-lrs-storage-decision.md).
 
 ## 1. Реляционный слой (PostgreSQL Core) и Стратегия Мультитенантности
 
@@ -25,7 +25,29 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
 
 > **Границы применимости.** Принудительная гарантия RLS действует только для реляционного слоя PostgreSQL (все бизнес-таблицы, `tenant_api_keys`, `tenant_feature_flags`, Вариант А LRS — TimescaleDB). Для Варианта Б LRS (ClickHouse) изоляция обеспечивается архитектурно — см. §2 Вариант Б. Требования к тестам изоляции обязательны для обоих вариантов.
 
-### 1.2. Реляционные сущности и декларативные связи
+### 1.2. Сводные DDL-фрагменты глобального слоя
+
+Ниже приведены эталонные DDL-фрагменты для глобальных таблиц `identities` и `tenants`. Полные спецификации полей — в §1.3 ниже; DDL-фрагменты служат наглядным ориентиром и должны быть синхронизированы с этими спецификациями при миграциях.
+
+```sql
+CREATE TABLE identities (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL, -- Хэш Argon2id в формате PHC string
+    preferred_tenant_id UUID,            -- Направление на дефолтный тенант
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE tenants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+> **Примечание.** В §1.3 ниже `password_hash` описан как `TEXT` (для PHC-строк произвольной длины), а `tenants` содержит расширенный набор полей (`custom_domain`, `default_locale`, `sso_config`, `branding_config`, `status`, `updated_at`). DDL-фрагменты здесь — минимальный скелет; источник истины — полевая спецификация §1.3.
+
+### 1.3. Реляционные сущности и декларативные связи
 
 #### Глобальная таблица: tenants (Изолирована от RLS)
 
@@ -145,6 +167,7 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
 * `identity_id`: UUID (FK -> identities.id ON DELETE CASCADE). Ссылка на глобальную личность.
+* `role`: VARCHAR(50) (NOT NULL). Роль личности в тенанте: `'student'`, `'teacher'`, `'admin'`, `'mentor'`, `'observer'`. Полная матрица ролей — в [`RBAC.md`](RBAC.md).
 * `is_active`: BOOLEAN (NOT NULL, DEFAULT TRUE). Позволяет деактивировать доступ личности к конкретному тенанту без удаления глобальной учетной записи.
 * `created_at` / `updated_at`: TIMESTAMPTZ.
 * **Ограничения:** Составной уникальный индекс `UNIQUE (tenant_id, identity_id)` (одна личность может быть добавлена в тенант только один раз).
@@ -220,6 +243,53 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
 * `enrolled_at`: TIMESTAMPTZ.
 * **Ограничения:** Составной уникальный индекс `UNIQUE (tenant_id, batch_id, user_id)`.
 
+#### Таблица: course_enrollments (Защищена RLS)
+
+Таблица связей для индивидуального зачисления пользователей на курсы (вне потоков).
+
+* `id`: UUID (Primary Key).
+* `tenant_id`: UUID (FK → tenants.id ON DELETE CASCADE).
+* `user_id`: UUID (FK → users.id ON DELETE CASCADE).
+* `course_id`: UUID (FK → courses.id ON DELETE CASCADE).
+* `status`: VARCHAR(32) (CHECK: `'active'`, `'completed'`, `'dropped'`).
+* `progress`: NUMERIC(5, 4) (NOT NULL, DEFAULT 0.0000). Общий прогресс курса (0.0–1.0).
+* `completed_lessons_weight`: NUMERIC(10, 4) (NOT NULL, DEFAULT 0.0000). Суммарный вес завершённых уроков (для O(1)-пересчёта прогресса).
+* `completed_at`: TIMESTAMPTZ (NULLable). Когда курс был завершён.
+* `enrolled_at`: TIMESTAMPTZ (NOT NULL, DEFAULT NOW()).
+* `created_at` / `updated_at`: TIMESTAMPTZ.
+* **Ограничения:** Уникальный индекс `UNIQUE (tenant_id, user_id, course_id)`.
+* **RLS Политика:** `course_enrollment_tenant_isolation_policy` (фильтрация по `tenant_id = current_setting('app.current_tenant_id', true)`).
+
+> **Инкрементальный пересчёт прогресса.** Поле `completed_lessons_weight` обновляется транзакционно при каждом upsert в `lesson_progress` со `status = 'completed'`. Это позволяет пересчитывать `progress` за O(1) вместо агрегатного `SUM(weight)` по всем урокам курса.
+
+#### Таблица: lesson_progress (Защищена RLS)
+
+Отслеживание прогресса студента по конкретному уроку.
+
+* `id`: UUID (Primary Key).
+* `tenant_id`: UUID (FK → tenants.id ON DELETE CASCADE).
+* `user_id`: UUID (FK → users.id ON DELETE CASCADE).
+* `node_id`: UUID (FK → nodes.id ON DELETE CASCADE). Узел типа `lesson`.
+* `status`: VARCHAR(32) (CHECK: `'not_started'`, `'in_progress'`, `'completed'`).
+* `score`: NUMERIC(5, 4) (NULLable). Балл за тест (0.0–1.0).
+* `passed`: BOOLEAN (NULLable). Сдан ли тест (вычисляется сервером на основе `score >= passing_score`).
+* `time_spent_seconds`: INTEGER (NOT NULL, DEFAULT 0). Общее время в уроке.
+* `attempt_count`: INTEGER (NOT NULL, DEFAULT 0). Количество попыток (увеличивается только для тестов при `status = 'completed'`).
+* `last_position`: INTEGER (NOT NULL, DEFAULT 0). Позиция в медиа (секунды) для возобновления.
+* `completed_at`: TIMESTAMPTZ (NULLable). Когда урок завершён.
+* `client_modified_at`: TIMESTAMPTZ (NULLable). Зарезервировано для синхронизации PWA (Этап 11).
+* `created_at` / `updated_at`: TIMESTAMPTZ.
+* **Ограничения:**
+  * Уникальный индекс `UNIQUE (user_id, node_id)`.
+  * CHECK: `score >= 0 AND score <= 1` (если не NULL).
+  * CHECK: `time_spent_seconds >= 0`, `attempt_count >= 0`, `last_position >= 0`.
+* **Индексы:** `idx_lesson_progress_tenant_id`, `idx_lesson_progress_user_id`, `idx_lesson_progress_node_id`, `idx_lesson_progress_status`, `idx_lesson_progress_completed` (partial index).
+* **RLS Политика:** `lesson_progress_tenant_isolation_policy`.
+
+> **Сервер вычисляет `passed`.** Клиент присылает только `score`, сервер вычисляет `passed = (score >= passing_score)` на основе `nodes.metadata.quiz.passing_score`.
+
+> **Архивные уроки.** Уроки с `nodes.is_archived = true` исключаются из пересчёта прогресса. Попытка обновить прогресс архивного урока возвращает `410 Gone`.
+
 #### Таблица: quizzes (Защищена RLS)
 
 Конфигурация автоматизированных тестов для контроля знаний внутри модулей.
@@ -262,6 +332,12 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
 * `issued_at`: TIMESTAMPTZ.
 * **Ограничения:** Уникальный индекс `UNIQUE (verification_hash)`.
 
+### 1.4. Контроль очистки контекста тенанта в Rust (ФСТЭК Compliance)
+
+При использовании пула соединений `sqlx::PgPool` в `crates/api` разработчики обязаны гарантировать, что контекст тенанта очищается при возврате соединения в пул. Реализация мутаций данных должна осуществляться строго в рамках явных транзакций, где значение `app.current_tenant_id` устанавливается с флагом `is_local = true`.
+
+Запрещено использовать методы прямой записи через `SeaORM` в обход механизмов транзакционной установки RLS-параметров хоста (см. [`CODING_STANDARDS.md`](CODING_STANDARDS.md) §2.3 и §7.9). Полный перечень ограничений линтера на использование небезопасных конструкций содержится в [`FSTECK_COMPLIANCE.md`](FSTECK_COMPLIANCE.md).
+
 ---
 
 ## 2. Аналитический слой (Инвариантная спецификация LRS)
@@ -273,6 +349,8 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
 ### Вариант А: TimescaleDB (Реляционно-временные гипертаблицы)
 
 Вся аналитика хранится внутри расширения PostgreSQL. Создается базовая родительская таблица `xapi_statements`, которая преобразуется в гипертаблицу, автоматически разделяемую на временные чанки по колонке `timestamp` с интервалом в 7 дней.
+
+> **Архитектурное обоснование.** Выбор TimescaleDB как рекомендованного LRS зафиксирован в ADR [`20261006-0012-lrs-storage-decision.md`](decisions/20261006-0012-lrs-storage-decision.md).
 
 * **Структура колонок таблицы `xapi_statements`:**
   * `tenant_id`: UUID (NOT NULL, индексируется совместно с временной меткой).
@@ -286,6 +364,8 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
 * **Индексы и сегментация:** Создается композитный индекс `(tenant_id, course_id, timestamp DESC)`.
 * **Политика сжатия (Compression Policy):** По истечении 14 дней с момента записи чанки гипертаблицы автоматически переводятся в колоночный формат хранения TimescaleDB со сжатием. Данные сегментируются по колонкам `tenant_id` и `course_id` и сортируются по `timestamp DESC`.
 * **Идемпотентность записи:** Первичный ключ `statement_id` (UNIQUE) обеспечивает защиту от дублей на уровне СУБД. Бэкенд `api` использует `INSERT ... ON CONFLICT (statement_id) DO NOTHING`. Повторная отправка пакета из offline-очереди PWA не создаёт дублей; `statement_id` возвращается клиенту в массиве `accepted` (см. [`OPEN_API.md`](OPEN_API.md) §3.4).
+
+> **Альтернативная схема колонок.** В ранних прототипах использовалась схема с `id UUID NOT NULL` в составе составного PK `(id, timestamp)`, а также отдельными колонками `actor_identity_id`, `verb`, `object_id`, `payload`. В актуальной версии эта схема заменена на `statement_id` + `statement_payload` + `user_id`/`course_id` (для совместимости с Identity-First). При миграциях со старых инсталляций применять `MIGRATIONS.md`.
 
 ### Вариант Б: ClickHouse (Колоночный OLAP-кластер)
 
@@ -354,4 +434,3 @@ ClickHouse не поддерживает `ON CONFLICT DO NOTHING` как Postgre
 3. Для средних объёмов (до 1 ТБ) допустима построчная мутация.
 
 Аналогичная логика применима к Варианту А (TimescaleDB), где мутации дешевле, но всё равно выполняются в фоне.
-
