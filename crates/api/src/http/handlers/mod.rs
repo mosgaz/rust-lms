@@ -36,6 +36,7 @@ use crate::auth::AuthService;
 use crate::database::{
     BatchEnrollmentRepository, BatchRepository, CourseEnrollmentRepository, CourseRepository,
     NodeRepository, TenantRepository, UserRepository,
+	QuestionRepository,
 };
 use crate::services::ProgressService;
 
@@ -60,6 +61,8 @@ pub struct AppState {
     pub course_enrollment_repo: CourseEnrollmentRepository,
     /// Сервис для работы с прогрессом обучения.
     pub progress_service: ProgressService,
+	/// Репозиторий вопросов для тестов.
+	pub question_repo: QuestionRepository,
 }
 
 /// Унифицированный формат ответа API.

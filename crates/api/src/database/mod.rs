@@ -16,5 +16,6 @@ pub use repositories::{
     LessonProgressRepository, LessonProgressRepositoryError, LessonProgressUpdateResult,
     NodeRepository, NodeRepositoryError, TenantRepository, TenantRepositoryError, UserRepository,
     UserRepositoryError,
+	QuestionRepository, QuestionRepositoryError,
 };
 pub use rls::RlsContext;
