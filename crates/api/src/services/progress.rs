@@ -4,7 +4,10 @@
 //! Координирует работу репозиториев и инкапсулирует бизнес-логику,
 //! включая генерацию событий для будущих интеграций (LRS/xAPI, Этап 13).
 
-use rust_lms_shared::{LessonStatus, NodeId, ProgressUpdatedEvent, TenantId, UserId};
+use rust_lms_shared::{
+    CourseId, CourseProgressSummary, LessonProgress, LessonStatus, NodeId, ProgressUpdatedEvent,
+    TenantId, UserId,
+};
 
 use crate::database::{
     LessonProgressRepository, LessonProgressRepositoryError, LessonProgressUpdateResult,
@@ -38,7 +41,6 @@ impl ProgressService {
         last_position: Option<i32>,
         client_modified_at: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<LessonProgressUpdateResult, LessonProgressRepositoryError> {
-        // 1. Делегируем основную работу репозиторию (ACID, блокировки, пересчёт)
         let result = self
             .lesson_progress_repo
             .upsert_and_recalculate(
@@ -53,8 +55,8 @@ impl ProgressService {
             )
             .await?;
 
-        // 2. Генерация события для асинхронной обработки (Заготовка для Этапа 13: LRS xAPI)
-        // TODO(Stage 13): Заменить на реальную публикацию в шину событий (e.g., event_bus.publish(event).await)
+        // Генерация события для асинхронной обработки (Заготовка для Этапа 13: LRS xAPI)
+        // TODO(Stage 13): Заменить на реальную публикацию в шину событий
         let _event = ProgressUpdatedEvent::new(
             tenant_id,
             user_id,
@@ -74,5 +76,41 @@ impl ProgressService {
         );
 
         Ok(result)
+    }
+
+    /// Получает детальный прогресс пользователя по конкретному курсу (все уроки, включая не начатые).
+    pub async fn get_user_course_progress(
+        &self,
+        tenant_id: TenantId,
+        user_id: UserId,
+        course_id: CourseId,
+    ) -> Result<Vec<LessonProgress>, sqlx::Error> {
+        self.lesson_progress_repo
+            .get_user_course_progress(tenant_id, user_id, course_id)
+            .await
+    }
+
+    /// Получает прогресс всех студентов курса с пагинацией.
+    pub async fn get_course_students_progress(
+        &self,
+        tenant_id: TenantId,
+        course_id: CourseId,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<CourseProgressSummary>, sqlx::Error> {
+        self.lesson_progress_repo
+            .get_course_students_progress(tenant_id, course_id, limit, offset)
+            .await
+    }
+
+    /// Принудительный пересчёт прогресса для всех зачисленных студентов курса.
+    pub async fn recalculate_course_progress(
+        &self,
+        tenant_id: TenantId,
+        course_id: CourseId,
+    ) -> Result<usize, sqlx::Error> {
+        self.lesson_progress_repo
+            .recalculate_course_progress(tenant_id, course_id)
+            .await
     }
 }
