@@ -293,7 +293,7 @@
 
 #### `POST /api/v1/courses/{id}/publish`
 - **Уровень доступа:** Локальный токен тенанта со scope `courses:write`.
-- **Назначение:** Публикация новой версии курса (инкремент `version` в `courses`, см. `DB_SCHEMA.md` §1.2).
+- **Назначение:** Публикация новой версии курса (инкремент `version` в `courses`, см. `DB_SCHEMA.md` §1.3).
 - **Response (200 OK):**
 ```json
 {
@@ -311,7 +311,7 @@
 
 Иерархия контента построена на единой таблице `nodes` с использованием PostgreSQL-расширения `ltree` (Adjacency List + ltree). Поддерживается гибкая вложенность: `Program → Course → Chapter → Topic → Lesson`, с возможностью пропуска промежуточных уровней.
 
-> **См. также:** `DB_SCHEMA.md` §1.2 (описание таблиц `courses` и `nodes`), ADR по Identity-First архитектуре.
+> **См. также:** `DB_SCHEMA.md` §1.3 (описание таблиц `courses` и `nodes`), ADR по Identity-First архитектуре.
 
 #### `GET /api/v1/courses`
 - **Уровень доступа:** Локальный токен тенанта (JWT Bearer).
@@ -605,6 +605,117 @@
 #### `GET /api/v1/users/:id/enrollments`
 - **Уровень доступа:** Локальный токен тенанта.
 - **Назначение:** Получение всех курсов, на которые зачислен пользователь.
+
+### 4.5. Прогресс обучения (Lesson Progress)
+
+#### `POST /api/v1/progress`
+
+Обновляет прогресс урока для текущего пользователя. Автоматически пересчитывает прогресс курса и проверяет критерии завершения.
+
+**Уровень доступа:** Tenant-scoped токен (студент, зачисленный в курс).
+
+**Тело запроса:**
+```json
+{
+  "node_id": "uuid",
+  "status": "completed",        // опционально: not_started | in_progress | completed
+  "score": 0.85,                // опционально: 0.0–1.0 (для тестов)
+  "time_spent_seconds": 1200,   // опционально
+  "last_position": 300,         // опционально: позиция в медиа (секунды)
+  "client_modified_at": "2026-10-07T10:00:00Z"  // опционально, для PWA-sync
+}
+```
+
+**Успешный ответ (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "lesson_progress": { "id": "uuid", "status": "completed", "score": 0.85, "passed": true, "...": "..." },
+    "course_progress": 0.75,
+    "course_status": "in_progress",
+    "completion_triggered": false
+  }
+}
+```
+
+**Ошибки:**
+- `403 Forbidden` — пользователь не зачислен в курс (`NotEnrolled`).
+- `404 Not Found` — урок не найден (`NodeNotFound`).
+- `409 Conflict` — курс уже завершён (`CourseAlreadyCompleted`).
+- `410 Gone` — урок архивирован (`NodeArchived`).
+
+---
+
+#### `GET /api/v1/progress/me`
+
+Возвращает весь прогресс текущего пользователя по всем курсам.
+
+**Уровень доступа:** Tenant-scoped токен (студент).
+
+**Успешный ответ (200 OK):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "course_id": "uuid",
+      "progress": 0.75,
+      "status": "in_progress",
+      "completed_at": null,
+      "completed_lessons_count": 3,
+      "total_lessons_count": 4,
+      "completed_lessons_weight": 3.0,
+      "total_lessons_weight": 4.0
+    }
+  ]
+}
+```
+
+---
+
+#### `GET /api/v1/progress/me/course/:course_id`
+
+Возвращает детальный прогресс по курсу — **все уроки**, включая не начатые.
+
+**Уровень доступа:** Tenant-scoped токен (студент, зачисленный в курс).
+
+**Успешный ответ (200 OK):** Массив уроков с полями `node_id`, `status`, `score`, `passed`, `time_spent_seconds`, `attempt_count`, `last_position`, `completed_at`. Уроки без прогресса возвращаются со `status: not_started`.
+
+**Ошибки:** `403 Forbidden` (не зачислен), `404 Not Found` (курс не найден).
+
+---
+
+#### `GET /api/v1/courses/:course_id/progress`
+
+Прогресс всех студентов курса (для инструктора/администратора).
+
+**Уровень доступа:** Tenant-scoped токен (роль `instructor` или `admin`).
+
+**Параметры запроса:**
+- `limit` (integer, optional, default: 100).
+- `offset` (integer, optional, default: 0).
+
+**Успешный ответ (200 OK):** Массив `CourseProgressSummary` (user_id, progress, status, completed_at, completed_lessons_count, total_lessons_count, completed_lessons_weight, total_lessons_weight).
+
+**Ошибки:** `403 Forbidden` (недостаточно прав).
+
+---
+
+#### `POST /api/v1/courses/:course_id/progress/recalculate`
+
+Принудительный пересчёт прогресса для всех зачисленных студентов курса.
+
+**Уровень доступа:** Tenant-scoped токен (роль `instructor` или `admin`).
+
+**Успешный ответ (200 OK):**
+```json
+{ "success": true, "data": { "rows_affected": 42 } }
+```
+
+> ⚠️ **Внимание:** Операция использует `FOR UPDATE OF ce` и блокирует все зачисления курса. Для больших курсов (1000+ студентов) рекомендуется запускать в нерабочее время.
+
+**Ошибки:** `403 Forbidden` (недостаточно прав).
 
 ---
 
