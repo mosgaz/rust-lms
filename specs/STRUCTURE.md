@@ -122,6 +122,7 @@
 	- `batch.rs` — `BatchRepository` (CRUD для потоков: `create`, `find_by_id`, `find_by_tenant`, `find_active_batches`, `update`, `delete`).
     - `batch_enrollment.rs` — `BatchEnrollmentRepository` (зачисления в потоки: `enroll`, `unenroll`, `find_by_batch`, `find_by_user`, `update_role`).
     - `course_enrollment.rs` — `CourseEnrollmentRepository` (индивидуальные зачисления на курсы: `enroll`, `unenroll`, `find_by_course`, `find_by_user`).
+    - `lesson_progress.rs` — `LessonProgressRepository` (прогресс обучения: `upsert_and_recalculate`, `get_user_course_progress`, `get_course_students_progress`, `recalculate_course_progress`, `is_instructor_or_admin`; транзакционный пересчёт с `SELECT FOR UPDATE`).
   - `entities/` — заглушка для будущих сгенерированных сущностей SeaORM (read-only типы).
 - `src/http/` — HTTP-слой на базе Axum:
   - `middleware.rs` — JWT-аутентификация: извлечение Bearer-токена из заголовка `Authorization`, валидация через `JwtManager`, инъекция `IdentityId` и `TenantId` в `Request::extensions`. Refresh/Session токены отклоняются для защищённых маршрутов.
@@ -135,7 +136,10 @@
 	- `batch.rs` — потоки: `list_batches`, `create_batch`, `get_batch`, `update_batch`, `delete_batch` + DTO.
     - `batch_enrollment.rs` — зачисления в потоки: `enroll_to_batch`, `unenroll_from_batch`, `list_batch_enrollments`, `update_batch_enrollment_role` + DTO.
     - `course_enrollment.rs` — индивидуальные зачисления на курсы: `enroll_to_course`, `unenroll_from_course`, `list_course_enrollments`, `list_user_course_enrollments` + DTO.
+    - `lesson_progress.rs` — прогресс обучения: `update_lesson_progress`, `get_user_course_progress`, `get_course_students_progress`, `recalculate_course_progress` + DTO (`PaginationQuery`).
   - `router.rs` — сборка Axum-роутера с разделением на публичные (`/api/v1/auth/*`, `/api/v1/tenants/*`) и защищённые JWT (`/api/v1/users/*`, `/api/v1/courses/*`, `/api/v1/nodes/*`) маршруты.
+- `src/services/` — сервисный слой, координирующий работу репозиториев:
+  - `progress.rs` — `ProgressService` (генерация `ProgressUpdatedEvent` для Этапа 13, делегирование вызовов в `LessonProgressRepository`).
 - `src/lrs/` — низкоуровневая обработка записей LRS (пакетный импорт в TimescaleDB или ClickHouse).
 - `src/etl/` — потоковые чанк-парсеры кастомного импорта пользователей (Custom ETL Mapper).
 - `src/scim/` — маппинг SCIM 2.0 (RFC 7643 / 7644) на внутренние сущности `users` / `batches` (см. `OPEN_API.md` §3.5).
@@ -149,6 +153,8 @@
 - `20261003000001_init_rls_and_tenants.sql` — таблицы `tenants`, `identities` (без RLS), `users` (с RLS, связь identity-tenant), политики RLS, индексы, CHECK constraints.
 - `20261006000001_create_content_hierarchy.sql` — таблицы `courses` (с RLS), `nodes` (с RLS, ltree-иерархия: parent_id + path), расширение ltree, GiST/GIN индексы.
 - `20261007000001_create_batches_and_enrollments.sql` — таблицы `batches`, `batch_courses`, `batch_enrollments`, `course_enrollments` (все tenant-scoped, RLS), переименование `courses.certification_rules` → `courses.completion_criteria`.
+- `20261008000001_create_lesson_progress.sql` — таблица `lesson_progress` (tenant-scoped, RLS, CHECK-констрейнты, индексы). Этап 9: Progress Tracking & Completion.
+- `20261009000001_add_total_weight_to_courses.sql` — денормализация `courses.metadata.total_weight` через триггер для O(1) пересчёта прогресса.
 
 ### 3.5. Крейт: `crates/client` (Isomorphic Frontend, PWA & RPC)
 
