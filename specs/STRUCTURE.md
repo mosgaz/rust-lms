@@ -34,6 +34,7 @@
     │   ├── MIGRATIONS.md             # Регламент миграций + Runbook для администратора
     │   ├── OPEN_API.md               # REST/GraphQL, SCIM 2.0, signed-url, версионирование
     │   ├── OFFLINE_SYNC.md           # Service Workers и IndexedDB для PWA, iOS-лимиты
+    │   ├── PLAN.md                   # Поэтапный план реализации
     │   ├── PLUGIN.md                 # Рантайм плагинов (iframe / WASM), FSM, подпись, kill switch
     │   ├── PLUGIN_DEVELOPMENT_TEMPLATE.md # ТЗ для разработчиков внешних плагинов
     │   ├── DEPLOY.md                 # Docker Compose, Nginx/CSP, Air-gapped, управление ключами, runbook JWT, Chaos

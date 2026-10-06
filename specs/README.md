@@ -10,7 +10,8 @@
 2. [`ARCHITECTURE.md`](ARCHITECTURE.md) — сводный ADD: RLS, Open API, LRS, плагины, ETL.
 3. [`NFR.md`](NFR.md) — количественные NFR и SLA: RTO/RPO, concurrency, latency budgets, лимиты, sizing.
 4. [`STRUCTURE.md`](STRUCTURE.md) — карта папок, состав Cargo workspace, Dependency Rules.
-5. Далее — профильные спецификации по зоне ответственности (см. таблицы ниже).
+5. [`PLAN.md`](PLAN.md) — тактическое, пошаговое руководство к действию с декомпозицией задач, зависимостями и четкими критериями приемки (Definition of Done).
+6. Далее — профильные спецификации по зоне ответственности (см. таблицы ниже).
 
 ### Для AI-агента
 
@@ -18,7 +19,8 @@
 2. [`SPECIFICATION.md`](SPECIFICATION.md) — источник истины по бизнес-требованиям.
 3. [`STRUCTURE.md`](STRUCTURE.md) — структура каталогов и Dependency Rules.
 4. [`CODING_STANDARDS.md`](CODING_STANDARDS.md) — правила full-stack Rust, RLS, запреты.
-5. Далее — профильные спецификации по зоне ответственности.
+5. [`PLAN.md`](PLAN.md) — тактическое, пошаговое руководство к действию с декомпозицией задач, зависимостями и четкими критериями приемки (Definition of Done).
+6. Далее — профильные спецификации по зоне ответственности.
 
 ---
 
