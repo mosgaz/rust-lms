@@ -8,7 +8,7 @@
 
 Проект спроектирован по принципу микро-крейтов (micro-crates) в рамках монорепозитория (Cargo workspace). Каждая папка внутри `crates/` решает изолированную задачу рантайма, предотвращая циклическое связывание и утечку нативного серверного кода в клиентский WebAssembly-бандл.
 
-Лимит размера крейта — ≤ 1500 строк бизнес-логики (без учёта тестов); см. `AGENTS.md` §6.
+Лимит размера крейта — ≤ 1500 строк бизнес-логики (без учёта тестов); см. `AGENTS.md` §6 и `specs/CODING_STANDARDS.md` §8. Размер отдельных файлов — 200–300 строк с своевременной декомпозицией.
 
 ## 2. Глобальная иерархия каталогов репозитория
 
@@ -18,11 +18,14 @@
     ├── CONTRIBUTING.md               # Стандарты коммитов и ветвления (root)
     ├── README.md                     # Главный путеводитель по репозиторию (root)
     ├── CHANGELOG.md                  # Журнал изменений (Conventional Commits)
+    ├── cargo-deny.toml               # Конфигурация cargo deny (bans / sources / licenses)
     │
     ├── specs/                        # Директория архитектурных спецификаций и ТЗ
     │   ├── README.md                 # Разводящая страница документации
     │   ├── AGENTS.md                 # Инструкции и чек-листы для AI-агентов
     │   ├── CODING_STANDARDS.md       # Обязательные стандарты кодинга (full-stack Rust / RLS)
+    │   ├── FSTECK_COMPLIANCE.md      # Соответствие ФСТЭК России (ГИС до К1, ИСПДн до УЗ-1, ОУД4+)
+    │   ├── COMPLIANCE_REGISTRY.md    # Реестр нормативно-правового соответствия (Минцифры, ФЗ-152, ФЗ-436)
     │   ├── STRUCTURE.md              # Настоящий файл: архитектурная карта папок
     │   ├── SPECIFICATION.md          # Бизнес-концепция и требования к платформе
     │   ├── ARCHITECTURE.md           # Сводный ADD: RLS, Open API, LRS, плагины, ETL
@@ -57,7 +60,8 @@
     │       ├── 2026.09.29-0008.md    # Формат и enforcement лицензионного ключа
     │       ├── 2026.09.29-0009.md    # Архитектура Feature Flags
     │       ├── 2026.09.29-0010.md    # Supply Chain Security для WASM-плагинов
-    │       └── 2026.10.05-0011.md    # Identity-First архитектура: разделение личности и роли в тенанте
+    │       ├── 2026.10.05-0011.md    # Identity-First архитектура: разделение личности и роли в тенанте
+    │       └── 2026.10.06-0012.md    # Выбор СУБД для LRS: TimescaleDB vs ClickHouse
     │
     └── crates/                       # Физические Rust-крейты платформы
         ├── shared/                   # Слой сетевых контрактов, структур сущностей и DTO
@@ -139,8 +143,9 @@
 - `src/license/` — валидация лицензионного ключа, enforcement лимитов, чтение/запись таблицы `license` (см. `LICENSING.md`).
 - `src/features/` — Feature Flags: чтение/запись `feature_flags` и `tenant_feature_flags`, in-memory кэш, LISTEN/NOTIFY-слушатель, API-контроллеры (см. `FEATURE_FLAGS.md`).
 - `src/sbom/` — генерация SBOM (CycloneDX) для WASM-плагинов, сканирование уязвимостей через `osv-scanner`, интеграция с Revocation List (см. ADR `2026.09.29-0010.md`).
+- `.sqlx/` — offline-кэш compile-time проверок `sqlx` (генерируется через `cargo sqlx prepare`, коммитится в репозиторий, используется в CI с `SQLX_OFFLINE=true`; см. `CODING_STANDARDS.md` §2.4).
 
-Миграции БД лежат в каталоге `crates/api/migrations/` (см. `MIGRATIONS.md`) и не являются модулем внутри `api`. Текущие миграции:
+Миграции БД лежат в каталоге `crates/api/migrations/` (см. `MIGRATIONS.md`) и не являются модулем внутри `api`. Все миграции выполняются **исключительно через `sqlx migrate`**; использование миграционных инструментов `SeaORM` запрещено (см. `CODING_STANDARDS.md` §2.3). `SeaORM` допускается только для генерации типов и сложных SELECT-запросов. Текущие миграции:
 - `20261003000001_init_rls_and_tenants.sql` — таблицы `tenants`, `identities` (без RLS), `users` (с RLS, связь identity-tenant), политики RLS, индексы, CHECK constraints.
 - `20261006000001_create_content_hierarchy.sql` — таблицы `courses` (с RLS), `nodes` (с RLS, ltree-иерархия: parent_id + path), расширение ltree, GiST/GIN индексы.
 - `20261007000001_create_batches_and_enrollments.sql` — таблицы `batches`, `batch_courses`, `batch_enrollments`, `course_enrollments` (все tenant-scoped, RLS), переименование `courses.certification_rules` → `courses.completion_criteria`.
@@ -186,6 +191,8 @@
 - Выполняет первичную валидацию лицензионного ключа при старте (см. `LICENSING.md` §4).
 - Поднимает выделенное LISTEN-соединение для Feature Flags (см. `FEATURE_FLAGS.md` §8.3) и лицензии (`license_changed`).
 - Периодический polling флагов (60 сек) и пересканирование SBOM активных плагинов (см. ADR `2026.09.29-0010.md` §3).
+- Логирование: `tracing-subscriber` с `env-filter`; в логи запрещено выводить пароли, хэши, JWT-токены, ПДн и биометрические метки (ФЗ-152, см. `CODING_STANDARDS.md` § 10). Для отладки — только суррогатные ключи `identity_id`, `user_id`, `tenant_id`. Использование `println!`/`eprintln!` в рантайме запрещено (см. `CODING_STANDARDS.md` § 1.5).
+- Supply chain: при старте выполняется первичная валидация лицензионного ключа и проверка `cargo-deny`-конфигурации (для сборок, прошедших CI).
 
 ### 3.7. Крейт: `crates/cli` (Administrative CLI)
 
@@ -194,6 +201,9 @@
 - `src/main.rs` — точка входа с парсингом аргументов через `clap`.
 - Подкоманды: `license` (установка/проверка ключа), `features` (управление флагами), `conformance` (запуск тестов соответствия стандартам).
 - Работает напрямую с БД через `sqlx` или с локальными файлами конфигурации.
+- Запрещено импортировать Leptos-зависимости и крейты из WASM-контура (`ui`, `icons`, `client`).
+- Любые новые зависимости подчиняются § 9 `CODING_STANDARDS.md`: обязательная проверка `cargo-audit`, запрет `deprecated`, `cargo vendor` для Air-gapped.
+- Команды `license`, `features`, `conformance` не должны использовать `unwrap()`/`expect()` в runtime-коде (см. `CODING_STANDARDS.md` § 1.4).
 
 ## 4. Направленность зависимостей и правила изоляции (Dependency Rules)
 
@@ -213,3 +223,5 @@
 4. **Автономность CLI:** Крейт `cli` не зависит от `server` и `client`. Он может использовать `shared` и `api` (для доступа к БД), но не может импортировать Leptos-зависимости.
 5. **Условная компиляция `shared`:** Модели с атрибутом `#[sqlx(transparent)]` (например, `TenantId`, `UserId`, `IdentityId`) доступны только при включённой фиче `server`. Клиентский код (`client`) должен использовать модели через `serde`-сериализацию без прямого доступа к `sqlx`-типам.
 6. **Identity-First архитектура (ADR 2026.10.05-0011):** Глобальная таблица `identities` (email, password_hash, preferred_tenant_id) не защищена RLS, так как проверка пароля происходит до определения контекста тенанта. Таблица `users` (связь identity_id + tenant_id) защищена RLS по `tenant_id`. Одна личность может иметь несколько записей `users` в разных тенантах.
+7. **Supply Chain Security (ФСТЭК/ГОСТ Р 56939):** Любая новая зависимость в `Cargo.toml` проходит обязательную проверку `cargo-audit` и `cargo deny check bans sources licenses`. Запрещены крейты со статусом `deprecated` или без активности за последние 12 месяцев. Для Air-gapped поставок обязателен `cargo vendor`. Полный регламент — `specs/CODING_STANDARDS.md` § 9.
+8. **Запрет `unsafe`:** В крейтах `api`, `server`, `client`, `ui`, `shared`, `icons` и `cli` использование `unsafe` категорически запрещено (ГОСТ Р 56939). Исключения возможны только в выделенных низкоуровневых WASM-мостах, с обязательным комментарием `// SAFETY:`, обоснованием и ревью Архитектурного комитета. См. `specs/CODING_STANDARDS.md` § 1.1.
