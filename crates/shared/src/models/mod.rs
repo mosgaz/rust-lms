@@ -23,6 +23,12 @@ pub mod node;
 pub mod tenant;
 /// Модель связи личности с тенантом.
 pub mod user;
+/// Вопросы для тестов.
+pub mod question;
+/// Попытки прохождения тестов.
+pub mod attempt;
+/// Ответы на вопросы.
+pub mod answer;
 
 pub use batch::{Batch, BatchId, BatchStatus};
 pub use batch_enrollment::{BatchEnrollment, BatchEnrollmentId, BatchRole, EnrollmentStatus};
@@ -38,3 +44,6 @@ pub use lesson_progress::{
 pub use node::{Node, NodeId, NodeType};
 pub use tenant::{Tenant, TenantId};
 pub use user::{User, UserId};
+pub use question::{Question, QuestionId, QuestionType, AnswerOption, CreateQuestionRequest, UpdateQuestionRequest};
+pub use attempt::{Attempt, AttemptId, AttemptStatus, CreateAttemptRequest, AttemptResponse, CompleteAttemptRequest};
+pub use answer::{Answer, AnswerId, CreateAnswerRequest, AnswerResponse};

@@ -14,4 +14,7 @@ pub use models::{
     Identity, IdentityCredentials, IdentityId, LessonProgress, LessonProgressId, LessonStatus, Node,
     NodeId, NodeType, ProgressResponse, ProgressUpdateRequest, ProgressUpdatedEvent, Tenant,
     TenantId, User, UserId,
+	Answer, AnswerId, AnswerOption, AnswerResponse, Attempt, AttemptId, AttemptResponse,
+    AttemptStatus, CompleteAttemptRequest, CreateAnswerRequest, CreateAttemptRequest,
+    CreateQuestionRequest, Question, QuestionId, QuestionType, UpdateQuestionRequest,
 };
