@@ -1,8 +1,5 @@
 // crates/api/src/services/progress.rs
 //! Сервисный слой для управления прогрессом обучения.
-//!
-//! Координирует работу репозиториев и инкапсулирует бизнес-логику,
-//! включая генерацию событий для будущих интеграций (LRS/xAPI, Этап 13).
 
 use rust_lms_shared::{
     CourseId, CourseProgressSummary, LessonProgress, LessonStatus, NodeId, ProgressUpdatedEvent,
@@ -26,6 +23,17 @@ impl ProgressService {
         Self {
             lesson_progress_repo,
         }
+    }
+
+    /// Проверяет, является ли пользователь инструктором или администратором.
+    pub async fn is_instructor_or_admin(
+        &self,
+        tenant_id: TenantId,
+        user_id: UserId,
+    ) -> Result<bool, sqlx::Error> {
+        self.lesson_progress_repo
+            .is_instructor_or_admin(tenant_id, user_id)
+            .await
     }
 
     /// Обновляет прогресс урока, пересчитывает курс и генерирует событие.
@@ -55,8 +63,6 @@ impl ProgressService {
             )
             .await?;
 
-        // Генерация события для асинхронной обработки (Заготовка для Этапа 13: LRS xAPI)
-        // TODO(Stage 13): Заменить на реальную публикацию в шину событий
         let _event = ProgressUpdatedEvent::new(
             tenant_id,
             user_id,
@@ -78,7 +84,7 @@ impl ProgressService {
         Ok(result)
     }
 
-    /// Получает детальный прогресс пользователя по конкретному курсу (все уроки, включая не начатые).
+    /// Получает детальный прогресс пользователя по конкретному курсу.
     pub async fn get_user_course_progress(
         &self,
         tenant_id: TenantId,

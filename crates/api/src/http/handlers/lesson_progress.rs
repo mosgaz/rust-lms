@@ -36,6 +36,12 @@ pub async fn update_lesson_progress(
     Extension(user_id): Extension<UserId>,
     Json(payload): Json<ProgressUpdateRequest>,
 ) -> impl IntoResponse {
+    tracing::info!(
+        user_id = %user_id,
+        node_id = %payload.node_id,
+        "Updating lesson progress"
+    );
+
     match state
         .progress_service
         .update_lesson_progress(
@@ -64,7 +70,7 @@ pub async fn update_lesson_progress(
     }
 }
 
-/// Получает детальный прогресс пользователя по конкретному курсу (все уроки, включая не начатые).
+/// Получает детальный прогресс пользователя по конкретному курсу.
 pub async fn get_user_course_progress(
     State(state): State<AppState>,
     Extension(tenant_id): Extension<TenantId>,
@@ -85,13 +91,31 @@ pub async fn get_user_course_progress(
     }
 }
 
-/// Получает прогресс всех студентов курса (для инструктора, с пагинацией).
+/// Получает прогресс всех студентов курса (для инструктора/админа).
 pub async fn get_course_students_progress(
     State(state): State<AppState>,
     Extension(tenant_id): Extension<TenantId>,
+    Extension(user_id): Extension<UserId>,
     Path(course_id): Path<CourseId>,
     Query(pagination): Query<PaginationQuery>,
 ) -> impl IntoResponse {
+    let is_allowed = match state
+        .progress_service
+        .is_instructor_or_admin(tenant_id, user_id)
+        .await
+    {
+        Ok(allowed) => allowed,
+        Err(_) => false,
+    };
+
+    if !is_allowed {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ApiResponse::<()>::err("Insufficient permissions")),
+        )
+            .into_response();
+    }
+
     match state
         .progress_service
         .get_course_students_progress(
@@ -115,8 +139,26 @@ pub async fn get_course_students_progress(
 pub async fn recalculate_course_progress(
     State(state): State<AppState>,
     Extension(tenant_id): Extension<TenantId>,
+    Extension(user_id): Extension<UserId>,
     Path(course_id): Path<CourseId>,
 ) -> impl IntoResponse {
+    let is_allowed = match state
+        .progress_service
+        .is_instructor_or_admin(tenant_id, user_id)
+        .await
+    {
+        Ok(allowed) => allowed,
+        Err(_) => false,
+    };
+
+    if !is_allowed {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ApiResponse::<()>::err("Insufficient permissions")),
+        )
+            .into_response();
+    }
+
     match state
         .progress_service
         .recalculate_course_progress(tenant_id, course_id)
@@ -131,7 +173,6 @@ pub async fn recalculate_course_progress(
     }
 }
 
-/// Преобразует ошибку репозитория в HTTP-ответ с соответствующим статус-кодом.
 fn map_error_to_response(e: LessonProgressRepositoryError) -> axum::response::Response {
     let (status, msg) = match e {
         LessonProgressRepositoryError::NodeNotFound => {
@@ -147,6 +188,10 @@ fn map_error_to_response(e: LessonProgressRepositoryError) -> axum::response::Re
         LessonProgressRepositoryError::CourseAlreadyCompleted => (
             StatusCode::CONFLICT,
             "Course already completed".to_string(),
+        ),
+        LessonProgressRepositoryError::Forbidden => (
+            StatusCode::FORBIDDEN,
+            "Insufficient permissions".to_string(),
         ),
         LessonProgressRepositoryError::Database(db_err) => {
             tracing::error!(error = %db_err, "Database error updating progress");

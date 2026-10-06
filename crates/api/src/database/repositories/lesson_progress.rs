@@ -27,6 +27,9 @@ pub enum LessonProgressRepositoryError {
     /// Курс уже завершён.
     #[error("Course already completed")]
     CourseAlreadyCompleted,
+    /// Недостаточно прав для выполнения операции.
+    #[error("Insufficient permissions")]
+    Forbidden,
 }
 
 /// Результат обновления прогресса урока.
@@ -57,7 +60,20 @@ impl LessonProgressRepository {
         Self { pool }
     }
 
-    /// Проверяет выполнение критериев завершения курса.
+    /// Проверяет, является ли пользователь инструктором или администратором тенанта.
+    pub async fn is_instructor_or_admin(&self, tenant_id: TenantId, user_id: UserId) -> Result<bool, sqlx::Error> {
+        let is_allowed: bool = sqlx::query_scalar(
+            r#"SELECT EXISTS (
+                SELECT 1 FROM users WHERE id = $1 AND tenant_id = $2 AND role IN ('instructor', 'admin')
+            )"#,
+        )
+        .bind(user_id.0)
+        .bind(tenant_id.0)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(is_allowed)
+    }
+
     fn check_completion_criteria(
         criteria: &CompletionCriteria,
         course_progress: f64,
@@ -125,8 +141,7 @@ impl LessonProgressRepository {
         let course_id = CourseId(node_info.0);
         let metadata = node_info.1;
         let node_weight = metadata.get("weight").and_then(|v| v.as_f64()).unwrap_or(1.0);
-        let is_quiz =
-            metadata.get("quiz").is_some() || metadata.get("assessment").is_some();
+        let is_quiz = metadata.get("quiz").is_some() || metadata.get("assessment").is_some();
         let passing_score = metadata
             .get("quiz")
             .and_then(|q| q.get("passing_score"))
@@ -396,9 +411,23 @@ impl LessonProgressRepository {
         user_id: UserId,
         course_id: CourseId,
     ) -> Result<Vec<LessonProgress>, sqlx::Error> {
+        let is_enrolled: bool = sqlx::query_scalar(
+            r#"SELECT EXISTS (SELECT 1 FROM course_enrollments WHERE user_id = $1 AND course_id = $2)"#,
+        )
+        .bind(user_id.0)
+        .bind(course_id.0)
+        .fetch_one(&self.pool)
+        .await?;
+
+        if !is_enrolled {
+            return Ok(Vec::new());
+        }
+
         let rows = sqlx::query(
             r#"
             SELECT 
+                $3 as "tenant_id: uuid",
+                $1 as "user_id: uuid",
                 n.id as "node_id: uuid",
                 lp.id as "id: uuid",
                 lp.status as "status: varchar",
@@ -429,8 +458,8 @@ impl LessonProgressRepository {
 
             result.push(LessonProgress {
                 id: LessonProgressId(id.unwrap_or_else(Uuid::new_v4)),
-                tenant_id,
-                user_id,
+                tenant_id: TenantId(row.get("tenant_id")),
+                user_id: UserId(row.get("user_id")),
                 node_id: NodeId(row.get("node_id")),
                 status: status
                     .map(|s| s.parse().unwrap_or(LessonStatus::NotStarted))
@@ -520,41 +549,116 @@ impl LessonProgressRepository {
         tenant_id: TenantId,
         course_id: CourseId,
     ) -> Result<usize, sqlx::Error> {
-        let result = sqlx::query(
+        let mut tx = self.pool.begin().await?;
+
+        let course_data = sqlx::query(
             r#"
-            WITH stats AS (
-                SELECT 
-                    lp.user_id,
-                    SUM(CASE WHEN lp.status = 'completed' THEN COALESCE((n.metadata->>'weight')::numeric, 1.0) ELSE 0.0 END) as new_weight
-                FROM lesson_progress lp
-                JOIN nodes n ON lp.node_id = n.id
-                WHERE n.course_id = $1
-                GROUP BY lp.user_id
-            ),
-            total AS (
-                SELECT COALESCE(SUM(COALESCE((metadata->>'weight')::numeric, 1.0)), 0.0) as total_weight
-                FROM nodes WHERE course_id = $1 AND tenant_id = $2 AND is_archived = FALSE AND node_type = 'lesson'
-            )
-            UPDATE course_enrollments ce
-            SET 
-                completed_lessons_weight = COALESCE(s.new_weight, 0.0),
-                progress = LEAST(1.0, GREATEST(0.0, COALESCE(s.new_weight, 0.0) / NULLIF(t.total_weight, 0.0))),
-                status = CASE 
-                    WHEN COALESCE(s.new_weight, 0.0) >= t.total_weight AND t.total_weight > 0 THEN 'completed'
-                    ELSE ce.status 
-                END,
-                completed_at = CASE 
-                    WHEN COALESCE(s.new_weight, 0.0) >= t.total_weight AND t.total_weight > 0 AND ce.completed_at IS NULL THEN NOW()
-                    ELSE ce.completed_at 
-                END
-            FROM stats s, total t
-            WHERE ce.course_id = $1 AND ce.user_id = s.user_id
+            SELECT 
+                completion_criteria as "completion_criteria: serde_json::Value",
+                (SELECT COALESCE(SUM(COALESCE((metadata->>'weight')::numeric, 1.0)), 0.0) 
+                 FROM nodes WHERE course_id = $1 AND tenant_id = $2 AND is_archived = FALSE AND node_type = 'lesson') as "total_weight: f64"
+            FROM courses WHERE id = $1 AND tenant_id = $2
             "#,
         )
         .bind(course_id.0)
         .bind(tenant_id.0)
-        .execute(&self.pool)
+        .fetch_one(&mut *tx)
         .await?;
-        Ok(result.rows_affected() as usize)
+
+        let total_weight = course_data.get::<f64, _>("total_weight").max(0.0001);
+        let criteria = course_data
+            .get::<Option<serde_json::Value>, _>("completion_criteria")
+            .and_then(|json| CompletionCriteria::from_json(&json).ok());
+
+        let student_stats = sqlx::query(
+            r#"
+            SELECT 
+                ce.user_id as "user_id: uuid",
+                ce.status as "current_status: varchar",
+                ce.completed_at,
+                ce.completed_lessons_weight as "current_weight: f64",
+                COALESCE(SUM(CASE WHEN lp.status = 'completed' THEN COALESCE((n.metadata->>'weight')::numeric, 1.0) ELSE 0.0 END), 0.0) as "calculated_weight: f64",
+                COALESCE(AVG(CASE WHEN n.metadata->'quiz' IS NOT NULL AND lp.status = 'completed' THEN lp.score END), 0.0) as "avg_quiz_score: f64",
+                COALESCE(array_agg(n.id) FILTER (WHERE lp.status = 'completed'), ARRAY[]::uuid[]) as "completed_node_ids: uuid[]",
+                COUNT(n.id) FILTER (WHERE n.node_type = 'lesson' AND lp.status = 'completed') as "completed_lessons: i32",
+                COUNT(n.id) FILTER (WHERE n.node_type = 'lesson') as "total_lessons: i32"
+            FROM course_enrollments ce
+            LEFT JOIN nodes n ON n.course_id = ce.course_id AND n.tenant_id = ce.tenant_id AND n.is_archived = FALSE AND n.node_type = 'lesson'
+            LEFT JOIN lesson_progress lp ON n.id = lp.node_id AND lp.user_id = ce.user_id
+            WHERE ce.course_id = $1
+            GROUP BY ce.user_id, ce.status, ce.completed_at, ce.completed_lessons_weight
+            "#,
+        )
+        .bind(course_id.0)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        let mut updated_count = 0;
+
+        for row in student_stats {
+            let user_id = UserId(row.get::<Uuid, _>("user_id"));
+            let calculated_weight: f64 = row.get("calculated_weight");
+            let course_progress = (calculated_weight / total_weight).min(1.0).max(0.0);
+            
+            let avg_quiz_score: Option<f64> = row.get("avg_quiz_score");
+            let completed_node_ids: Vec<Uuid> = row.get("completed_node_ids");
+            let total_lessons: i32 = row.get("total_lessons");
+            let completed_lessons: i32 = row.get("completed_lessons");
+            
+            let current_status: String = row.get("current_status");
+            let current_completed_at: Option<chrono::DateTime<Utc>> = row.get("completed_at");
+            let current_weight: f64 = row.get("current_weight");
+
+            let should_complete = if let Some(ref crit) = criteria {
+                Self::check_completion_criteria(
+                    crit,
+                    course_progress,
+                    avg_quiz_score,
+                    &completed_node_ids,
+                    total_lessons,
+                    completed_lessons,
+                )
+            } else {
+                course_progress >= 1.0
+            };
+
+            let new_status = if should_complete && current_status != "completed" {
+                "completed".to_string()
+            } else {
+                current_status.clone()
+            };
+
+            let new_completed_at = if new_status == "completed" && current_completed_at.is_none() {
+                Some(Utc::now())
+            } else {
+                current_completed_at
+            };
+
+            let weight_changed = (calculated_weight - current_weight).abs() > 0.0001;
+            let status_changed = new_status != current_status;
+            let date_changed = new_completed_at != current_completed_at;
+
+            if status_changed || date_changed || weight_changed {
+                sqlx::query(
+                    r#"
+                    UPDATE course_enrollments
+                    SET progress = $1, completed_lessons_weight = $2, status = $3, completed_at = $4
+                    WHERE user_id = $5 AND course_id = $6
+                    "#,
+                )
+                .bind(course_progress)
+                .bind(calculated_weight)
+                .bind(&new_status)
+                .bind(new_completed_at)
+                .bind(user_id.0)
+                .bind(course_id.0)
+                .execute(&mut *tx)
+                .await?;
+                updated_count += 1;
+            }
+        }
+
+        tx.commit().await?;
+        Ok(updated_count)
     }
 }
