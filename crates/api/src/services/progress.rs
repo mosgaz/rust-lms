@@ -1,5 +1,8 @@
 // crates/api/src/services/progress.rs
 //! Сервисный слой для управления прогрессом обучения.
+//!
+//! Координирует работу репозиториев и инкапсулирует бизнес-логику,
+//! включая генерацию событий для будущих интеграций (LRS/xAPI, Этап 13).
 
 use rust_lms_shared::{
     CourseId, CourseProgressSummary, LessonProgress, LessonStatus, NodeId, ProgressUpdatedEvent,

@@ -501,15 +501,14 @@ impl LessonProgressRepository {
                 COALESCE(stats.completed_lessons, 0) as "completed_lessons_count: i32",
                 COALESCE(stats.total_lessons, 0) as "total_lessons_count: i32",
                 ce.completed_lessons_weight,
-                COALESCE(stats.total_weight, 0.0) as "total_lessons_weight: f64"
+                COALESCE((SELECT SUM(COALESCE((metadata->>'weight')::numeric, 1.0)) FROM nodes WHERE course_id = $1 AND is_archived = FALSE AND node_type = 'lesson'), 0.0) as "total_lessons_weight: f64"
             FROM course_enrollments ce
             JOIN courses c ON ce.course_id = c.id
             LEFT JOIN (
                 SELECT 
                     lp.user_id,
                     COUNT(n.id) FILTER (WHERE n.node_type = 'lesson' AND lp.status = 'completed') as completed_lessons,
-                    COUNT(n.id) FILTER (WHERE n.node_type = 'lesson') as total_lessons,
-                    SUM(CASE WHEN lp.status = 'completed' THEN COALESCE((n.metadata->>'weight')::numeric, 1.0) ELSE 0.0 END) as total_weight
+                    COUNT(n.id) FILTER (WHERE n.node_type = 'lesson') as total_lessons
                 FROM lesson_progress lp
                 JOIN nodes n ON lp.node_id = n.id
                 WHERE n.course_id = $1 
@@ -577,6 +576,7 @@ impl LessonProgressRepository {
                 ce.status as "current_status: varchar",
                 ce.completed_at,
                 ce.completed_lessons_weight as "current_weight: f64",
+                ce.progress as "current_progress: f64",
                 COALESCE(SUM(CASE WHEN lp.status = 'completed' THEN COALESCE((n.metadata->>'weight')::numeric, 1.0) ELSE 0.0 END), 0.0) as "calculated_weight: f64",
                 COALESCE(AVG(CASE WHEN n.metadata->'quiz' IS NOT NULL AND lp.status = 'completed' THEN lp.score END), 0.0) as "avg_quiz_score: f64",
                 COALESCE(array_agg(n.id) FILTER (WHERE lp.status = 'completed'), ARRAY[]::uuid[]) as "completed_node_ids: uuid[]",
@@ -586,7 +586,7 @@ impl LessonProgressRepository {
             LEFT JOIN nodes n ON n.course_id = ce.course_id AND n.tenant_id = ce.tenant_id AND n.is_archived = FALSE AND n.node_type = 'lesson'
             LEFT JOIN lesson_progress lp ON n.id = lp.node_id AND lp.user_id = ce.user_id
             WHERE ce.course_id = $1
-            GROUP BY ce.user_id, ce.status, ce.completed_at, ce.completed_lessons_weight
+            GROUP BY ce.user_id, ce.status, ce.completed_at, ce.completed_lessons_weight, ce.progress
             "#,
         )
         .bind(course_id.0)
@@ -598,7 +598,7 @@ impl LessonProgressRepository {
         for row in student_stats {
             let user_id = UserId(row.get::<Uuid, _>("user_id"));
             let calculated_weight: f64 = row.get("calculated_weight");
-            let course_progress = (calculated_weight / total_weight).min(1.0).max(0.0);
+            let calculated_progress = (calculated_weight / total_weight).min(1.0).max(0.0);
             
             let avg_quiz_score: Option<f64> = row.get("avg_quiz_score");
             let completed_node_ids: Vec<Uuid> = row.get("completed_node_ids");
@@ -608,18 +608,19 @@ impl LessonProgressRepository {
             let current_status: String = row.get("current_status");
             let current_completed_at: Option<chrono::DateTime<Utc>> = row.get("completed_at");
             let current_weight: f64 = row.get("current_weight");
+            let current_progress: f64 = row.get("current_progress");
 
             let should_complete = if let Some(ref crit) = criteria {
                 Self::check_completion_criteria(
                     crit,
-                    course_progress,
+                    calculated_progress,
                     avg_quiz_score,
                     &completed_node_ids,
                     total_lessons,
                     completed_lessons,
                 )
             } else {
-                course_progress >= 1.0
+                calculated_progress >= 1.0
             };
 
             let new_status = if should_complete && current_status != "completed" {
@@ -635,10 +636,11 @@ impl LessonProgressRepository {
             };
 
             let weight_changed = (calculated_weight - current_weight).abs() > 0.0001;
+            let progress_changed = (calculated_progress - current_progress).abs() > 0.0001;
             let status_changed = new_status != current_status;
             let date_changed = new_completed_at != current_completed_at;
 
-            if status_changed || date_changed || weight_changed {
+            if status_changed || date_changed || weight_changed || progress_changed {
                 sqlx::query(
                     r#"
                     UPDATE course_enrollments
@@ -646,7 +648,7 @@ impl LessonProgressRepository {
                     WHERE user_id = $5 AND course_id = $6
                     "#,
                 )
-                .bind(course_progress)
+                .bind(calculated_progress)
                 .bind(calculated_weight)
                 .bind(&new_status)
                 .bind(new_completed_at)
