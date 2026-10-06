@@ -12,7 +12,7 @@ use crate::auth::{AuthService, JwtConfig, JwtManager};
 use crate::database::{
     BatchEnrollmentRepository, BatchRepository, CourseEnrollmentRepository, CourseRepository,
     IdentityRepository, LessonProgressRepository, NodeRepository, TenantRepository, UserRepository,
-	QuestionRepository,
+	QuestionRepository, AttemptRepository,
 };
 use crate::services::ProgressService;
 
@@ -43,6 +43,7 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
     );
 
 	let question_repo = QuestionRepository::new(pool.clone());
+	let attempt_repo = AttemptRepository::new(pool.clone());
 
     let state = AppState {
         tenant_repo,
@@ -55,6 +56,7 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
         course_enrollment_repo,
         progress_service,
 		question_repo,
+		attempt_repo,
     };
 
     let public_routes = Router::new()

@@ -17,5 +17,6 @@ pub use repositories::{
     NodeRepository, NodeRepositoryError, TenantRepository, TenantRepositoryError, UserRepository,
     UserRepositoryError,
 	QuestionRepository, QuestionRepositoryError,
+	AttemptRepository, AttemptRepositoryError,
 };
 pub use rls::RlsContext;
