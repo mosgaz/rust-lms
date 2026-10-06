@@ -55,3 +55,116 @@ pub fn get_auth_token(tenant_id: TenantId, identity_id: IdentityId) -> String {
     let jwt_manager = JwtManager::new(JwtConfig::default());
     jwt_manager.generate_access_token(identity_id, tenant_id).unwrap()
 }
+
+/// Создаёт тестовый курс (без иерархии уроков).
+pub async fn create_test_course(pool: &PgPool, tenant_id: TenantId, title: &str) -> uuid::Uuid {
+    let course_id = uuid::Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO courses (id, tenant_id, title, description, status, metadata)
+         VALUES ($1, $2, $3, '', 'draft', '{}'::jsonb)",
+    )
+    .bind(course_id)
+    .bind(tenant_id.0)
+    .bind(title)
+    .execute(pool)
+    .await
+    .expect("Failed to create test course");
+    course_id
+}
+
+/// Создаёт тестовый урок (lesson) в указанном курсе.
+///
+/// # Arguments
+/// * `weight` - вес урока (для взвешенного расчёта прогресса), None = 1.0
+/// * `quiz_passing_score` - если Some, урок считается тестом с порогом сдачи
+pub async fn create_test_lesson(
+    pool: &PgPool,
+    tenant_id: TenantId,
+    course_id: uuid::Uuid,
+    title: &str,
+    weight: Option<f64>,
+    quiz_passing_score: Option<f64>,
+) -> uuid::Uuid {
+    let lesson_id = uuid::Uuid::new_v4();
+
+    let metadata = match (weight, quiz_passing_score) {
+        (Some(w), Some(ps)) => serde_json::json!({"weight": w, "quiz": {"passing_score": ps}}),
+        (Some(w), None) => serde_json::json!({"weight": w}),
+        (None, Some(ps)) => serde_json::json!({"quiz": {"passing_score": ps}}),
+        (None, None) => serde_json::json!({}),
+    };
+
+    sqlx::query(
+        "INSERT INTO nodes (id, tenant_id, course_id, node_type, title, metadata, is_archived)
+         VALUES ($1, $2, $3, 'lesson', $4, $5::jsonb, false)",
+    )
+    .bind(lesson_id)
+    .bind(tenant_id.0)
+    .bind(course_id)
+    .bind(title)
+    .bind(metadata)
+    .execute(pool)
+    .await
+    .expect("Failed to create test lesson");
+    lesson_id
+}
+
+/// Создаёт архивный урок (is_archived = true).
+pub async fn create_archived_lesson(
+    pool: &PgPool,
+    tenant_id: TenantId,
+    course_id: uuid::Uuid,
+    title: &str,
+) -> uuid::Uuid {
+    let lesson_id = uuid::Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO nodes (id, tenant_id, course_id, node_type, title, metadata, is_archived)
+         VALUES ($1, $2, $3, 'lesson', $4, '{}'::jsonb, true)",
+    )
+    .bind(lesson_id)
+    .bind(tenant_id.0)
+    .bind(course_id)
+    .bind(title)
+    .execute(pool)
+    .await
+    .expect("Failed to create archived lesson");
+    lesson_id
+}
+
+/// Зачисляет пользователя на курс (индивидуальное зачисление).
+pub async fn enroll_user_to_course(
+    pool: &PgPool,
+    tenant_id: TenantId,
+    user_id: UserId,
+    course_id: uuid::Uuid,
+) {
+    let enrollment_id = uuid::Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO course_enrollments (id, tenant_id, user_id, course_id, status, progress, completed_lessons_weight)
+         VALUES ($1, $2, $3, $4, 'active', 0.0, 0.0)",
+    )
+    .bind(enrollment_id)
+    .bind(tenant_id.0)
+    .bind(user_id.0)
+    .bind(course_id)
+    .execute(pool)
+    .await
+    .expect("Failed to enroll user to course");
+}
+
+/// Устанавливает критерии завершения для курса.
+pub async fn set_course_completion_criteria(
+    pool: &PgPool,
+    course_id: uuid::Uuid,
+    criteria: &serde_json::Value,
+) {
+    sqlx::query(
+        "UPDATE courses SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{completion_criteria}', $2::jsonb)
+         WHERE id = $1",
+    )
+    .bind(course_id)
+    .bind(criteria)
+    .execute(pool)
+    .await
+    .expect("Failed to set completion criteria");
+}
