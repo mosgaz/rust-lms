@@ -88,38 +88,53 @@ impl ProgressService {
     }
 
     /// Получает детальный прогресс пользователя по конкретному курсу.
+    ///
+    /// # Errors
+    ///
+    /// Возвращает `LessonProgressRepositoryError::NotEnrolled`, если студент не зачислен.
     pub async fn get_user_course_progress(
         &self,
         tenant_id: TenantId,
         user_id: UserId,
         course_id: CourseId,
-    ) -> Result<Vec<LessonProgress>, sqlx::Error> {
+    ) -> Result<Vec<LessonProgress>, LessonProgressRepositoryError> {
         self.lesson_progress_repo
             .get_user_course_progress(tenant_id, user_id, course_id)
             .await
     }
 
     /// Получает прогресс всех студентов курса с пагинацией.
+    ///
+    /// # Errors
+    ///
+    /// Возвращает ошибку, если:
+    /// - Курс не найден
+    /// - Ошибка базы данных
     pub async fn get_course_students_progress(
         &self,
         tenant_id: TenantId,
         course_id: CourseId,
         limit: i64,
         offset: i64,
-    ) -> Result<Vec<CourseProgressSummary>, sqlx::Error> {
+    ) -> Result<Vec<CourseProgressSummary>, LessonProgressRepositoryError> {
         self.lesson_progress_repo
             .get_course_students_progress(tenant_id, course_id, limit, offset)
             .await
+            .map_err(LessonProgressRepositoryError::Database)
     }
 
     /// Принудительный пересчёт прогресса для всех зачисленных студентов курса.
+    ///
+    /// **Внимание:** Эта операция блокирует все зачисления курса на время выполнения.
+    /// Для больших курсов (1000+ студентов) это может занять несколько секунд.
     pub async fn recalculate_course_progress(
         &self,
         tenant_id: TenantId,
         course_id: CourseId,
-    ) -> Result<usize, sqlx::Error> {
+    ) -> Result<usize, LessonProgressRepositoryError> {
         self.lesson_progress_repo
             .recalculate_course_progress(tenant_id, course_id)
             .await
+            .map_err(LessonProgressRepositoryError::Database)
     }
 }

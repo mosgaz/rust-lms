@@ -7,7 +7,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use rust_lms_shared::{CourseId, ProgressUpdateRequest, ProgressResponse, TenantId, UserId};
+use rust_lms_shared::{CourseId, ProgressResponse, ProgressUpdateRequest, TenantId, UserId};
 use serde::Deserialize;
 
 use crate::database::LessonProgressRepositoryError;
@@ -71,6 +71,8 @@ pub async fn update_lesson_progress(
 }
 
 /// Получает детальный прогресс пользователя по конкретному курсу.
+///
+/// `GET /api/v1/progress/me/course/{course_id}`
 pub async fn get_user_course_progress(
     State(state): State<AppState>,
     Extension(tenant_id): Extension<TenantId>,
@@ -83,15 +85,13 @@ pub async fn get_user_course_progress(
         .await
     {
         Ok(progress) => (StatusCode::OK, Json(ApiResponse::ok(progress))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse::<()>::err(e.to_string())),
-        )
-            .into_response(),
+        Err(e) => map_error_to_response(e),
     }
 }
 
 /// Получает прогресс всех студентов курса (для инструктора/админа).
+///
+/// `GET /api/v1/courses/{course_id}/progress`
 pub async fn get_course_students_progress(
     State(state): State<AppState>,
     Extension(tenant_id): Extension<TenantId>,
@@ -127,15 +127,19 @@ pub async fn get_course_students_progress(
         .await
     {
         Ok(progress) => (StatusCode::OK, Json(ApiResponse::ok(progress))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse::<()>::err(e.to_string())),
-        )
-            .into_response(),
+        Err(e) => map_error_to_response(e),
     }
 }
 
-/// Принудительный пересчёт прогресса курса (для инструктора/админа).
+/// Принудительный пересчёт прогресса для всех зачисленных студентов курса.
+///
+/// # Safety
+///
+/// Эта операция блокирует все зачисления курса (`FOR UPDATE OF ce`) на время выполнения.
+/// Для больших курсов (1000+ студентов) это может занять несколько секунд.
+/// Рекомендуется запускать в нерабочее время или через background worker.
+///
+/// `POST /api/v1/courses/{course_id}/progress/recalculate`
 pub async fn recalculate_course_progress(
     State(state): State<AppState>,
     Extension(tenant_id): Extension<TenantId>,
@@ -165,14 +169,11 @@ pub async fn recalculate_course_progress(
         .await
     {
         Ok(rows_affected) => (StatusCode::OK, Json(ApiResponse::ok(rows_affected))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse::<()>::err(e.to_string())),
-        )
-            .into_response(),
+        Err(e) => map_error_to_response(e),
     }
 }
 
+/// Маппинг ошибок репозитория прогресса в HTTP-ответы.
 fn map_error_to_response(e: LessonProgressRepositoryError) -> axum::response::Response {
     let (status, msg) = match e {
         LessonProgressRepositoryError::NodeNotFound => {
@@ -194,7 +195,7 @@ fn map_error_to_response(e: LessonProgressRepositoryError) -> axum::response::Re
             "Insufficient permissions".to_string(),
         ),
         LessonProgressRepositoryError::Database(db_err) => {
-            tracing::error!(error = %db_err, "Database error updating progress");
+            tracing::error!(error = %db_err, "Database error in progress operation");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Internal server error".to_string(),

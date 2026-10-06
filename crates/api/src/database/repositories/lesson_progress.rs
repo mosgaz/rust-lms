@@ -294,14 +294,14 @@ impl LessonProgressRepository {
         current_completed_weight = (current_completed_weight + delta).max(0.0);
 
         let total_weight_row = sqlx::query(
-            r#"SELECT COALESCE(SUM(COALESCE((metadata->>'weight')::numeric, 1.0)), 0.0) as total_weight
-               FROM nodes WHERE course_id = $1 AND tenant_id = $2 AND is_archived = FALSE AND node_type = 'lesson'"#,
-        )
-        .bind(course_id.0)
-        .bind(tenant_id.0)
-        .fetch_one(&mut *tx)
-        .await?;
-        let total_weight: f64 = total_weight_row.get::<f64, _>("total_weight").max(0.0001);
+			r#"SELECT COALESCE((metadata->>'total_weight')::numeric, 0.0) as total_weight
+			FROM courses WHERE id = $1 AND tenant_id = $2"#,
+		)
+			.bind(course_id.0)
+			.bind(tenant_id.0)
+			.fetch_one(&mut *tx)
+			.await?;
+		let total_weight: f64 = total_weight_row.get::<f64, _>("total_weight").max(0.0001);
 
         let course_progress = (current_completed_weight / total_weight).min(1.0).max(0.0);
 
@@ -406,22 +406,23 @@ impl LessonProgressRepository {
 
     /// Получает детальный прогресс пользователя по конкретному курсу (все уроки, включая не начатые).
     pub async fn get_user_course_progress(
-        &self,
-        tenant_id: TenantId,
-        user_id: UserId,
-        course_id: CourseId,
-    ) -> Result<Vec<LessonProgress>, sqlx::Error> {
-        let is_enrolled: bool = sqlx::query_scalar(
-            r#"SELECT EXISTS (SELECT 1 FROM course_enrollments WHERE user_id = $1 AND course_id = $2)"#,
-        )
-        .bind(user_id.0)
-        .bind(course_id.0)
-        .fetch_one(&self.pool)
-        .await?;
+		&self,
+		tenant_id: TenantId,
+		user_id: UserId,
+		course_id: CourseId,
+	) -> Result<Vec<LessonProgress>, LessonProgressRepositoryError> {
+		let is_enrolled: bool = sqlx::query_scalar(
+			r#"SELECT EXISTS (SELECT 1 FROM course_enrollments WHERE user_id = $1 AND course_id = $2)"#,
+		)
+			.bind(user_id.0)
+			.bind(course_id.0)
+			.fetch_one(&self.pool)
+			.await
+			.map_err(LessonProgressRepositoryError::Database)?;
 
-        if !is_enrolled {
-            return Ok(Vec::new());
-        }
+		if !is_enrolled {
+			return Err(LessonProgressRepositoryError::NotEnrolled);
+		}
 
         let rows = sqlx::query(
             r#"
@@ -569,29 +570,31 @@ impl LessonProgressRepository {
             .get::<Option<serde_json::Value>, _>("completion_criteria")
             .and_then(|json| CompletionCriteria::from_json(&json).ok());
 
-        let student_stats = sqlx::query(
-            r#"
-            SELECT 
-                ce.user_id as "user_id: uuid",
-                ce.status as "current_status: varchar",
-                ce.completed_at,
-                ce.completed_lessons_weight as "current_weight: f64",
-                ce.progress as "current_progress: f64",
-                COALESCE(SUM(CASE WHEN lp.status = 'completed' THEN COALESCE((n.metadata->>'weight')::numeric, 1.0) ELSE 0.0 END), 0.0) as "calculated_weight: f64",
-                COALESCE(AVG(CASE WHEN n.metadata->'quiz' IS NOT NULL AND lp.status = 'completed' THEN lp.score END), 0.0) as "avg_quiz_score: f64",
-                COALESCE(array_agg(n.id) FILTER (WHERE lp.status = 'completed'), ARRAY[]::uuid[]) as "completed_node_ids: uuid[]",
-                COUNT(n.id) FILTER (WHERE n.node_type = 'lesson' AND lp.status = 'completed') as "completed_lessons: i32",
-                COUNT(n.id) FILTER (WHERE n.node_type = 'lesson') as "total_lessons: i32"
-            FROM course_enrollments ce
-            LEFT JOIN nodes n ON n.course_id = ce.course_id AND n.tenant_id = ce.tenant_id AND n.is_archived = FALSE AND n.node_type = 'lesson'
-            LEFT JOIN lesson_progress lp ON n.id = lp.node_id AND lp.user_id = ce.user_id
-            WHERE ce.course_id = $1
-            GROUP BY ce.user_id, ce.status, ce.completed_at, ce.completed_lessons_weight, ce.progress
-            "#,
-        )
-        .bind(course_id.0)
-        .fetch_all(&mut *tx)
-        .await?;
+        // Блокируем все зачисления курса для предотвращения race condition
+		let student_stats = sqlx::query(
+			r#"
+			SELECT 
+				ce.user_id as "user_id: uuid",
+				ce.status as "current_status: varchar",
+				ce.completed_at,
+				ce.completed_lessons_weight as "current_weight: f64",
+				ce.progress as "current_progress: f64",
+				COALESCE(SUM(CASE WHEN lp.status = 'completed' THEN COALESCE((n.metadata->>'weight')::numeric, 1.0) ELSE 0.0 END), 0.0) as "calculated_weight: f64",
+				COALESCE(AVG(CASE WHEN n.metadata->'quiz' IS NOT NULL AND lp.status = 'completed' THEN lp.score END), 0.0) as "avg_quiz_score: f64",
+				COALESCE(array_agg(n.id) FILTER (WHERE lp.status = 'completed'), ARRAY[]::uuid[]) as "completed_node_ids: uuid[]",
+				COUNT(n.id) FILTER (WHERE n.node_type = 'lesson' AND lp.status = 'completed') as "completed_lessons: i32",
+				COUNT(n.id) FILTER (WHERE n.node_type = 'lesson') as "total_lessons: i32"
+			FROM course_enrollments ce
+			LEFT JOIN nodes n ON n.course_id = ce.course_id AND n.tenant_id = ce.tenant_id AND n.is_archived = FALSE AND n.node_type = 'lesson'
+			LEFT JOIN lesson_progress lp ON n.id = lp.node_id AND lp.user_id = ce.user_id
+			WHERE ce.course_id = $1
+			GROUP BY ce.user_id, ce.status, ce.completed_at, ce.completed_lessons_weight, ce.progress
+			FOR UPDATE OF ce
+			"#,
+		)
+			.bind(course_id.0)
+			.fetch_all(&mut *tx)
+			.await?;
 
         let mut updated_count = 0;
 
