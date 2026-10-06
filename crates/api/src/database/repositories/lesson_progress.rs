@@ -38,6 +38,8 @@ pub enum LessonProgressRepositoryError {
 /// Результат обновления прогресса урока.
 #[derive(Debug, Clone)]
 pub struct LessonProgressUpdateResult {
+    /// Идентификатор курса (добавлено для генерации событий в сервисном слое).
+    pub course_id: CourseId,
     /// Обновлённый прогресс урока.
     pub lesson_progress: LessonProgress,
     /// Текущий прогресс курса (0.0–1.0).
@@ -90,9 +92,6 @@ impl LessonProgressRepository {
     }
 
     /// Создает или обновляет прогресс урока, пересчитывает прогресс курса и проверяет критерии завершения.
-    ///
-    /// Вся операция выполняется в одной транзакции с блокировкой `SELECT FOR UPDATE`
-    /// на строке `course_enrollments` для защиты от race conditions.
     #[allow(clippy::too_many_arguments)]
     pub async fn upsert_and_recalculate(
         &self,
@@ -138,7 +137,7 @@ impl LessonProgressRepository {
             .and_then(|v| v.as_f64())
             .unwrap_or(0.7);
 
-        // 2. Блокируем и проверяем зачисление (P0: NotEnrolled, P1: CourseAlreadyCompleted)
+        // 2. Блокируем и проверяем зачисление
         let enrollment = sqlx::query(
             r#"SELECT status, completed_lessons_weight FROM course_enrollments WHERE user_id = $1 AND course_id = $2 FOR UPDATE"#,
         )
@@ -208,7 +207,6 @@ impl LessonProgressRepository {
 
         let now = Utc::now();
         
-        // P1 Fix: Сбрасываем completed_at в NULL, если статус больше не completed
         let final_completed_at = if new_status == LessonStatus::Completed {
             if existing_progress.as_ref().map(|p| p.1 == "completed").unwrap_or(false) {
                 existing_progress.as_ref().and_then(|p| p.7)
@@ -263,7 +261,7 @@ impl LessonProgressRepository {
             .get::<Uuid, _>("id")
         };
 
-        // 6. Инкрементальный пересчёт веса (P1)
+        // 6. Инкрементальный пересчёт веса
         let old_status_str = existing_progress.as_ref().map(|p| p.1.as_str()).unwrap_or("not_started");
         let new_status_str = new_status.as_str();
 
@@ -277,7 +275,6 @@ impl LessonProgressRepository {
 
         current_completed_weight = (current_completed_weight + delta).max(0.0);
 
-        // P0 Fix: COALESCE для веса узла, чтобы отсутствующий weight считался как 1.0
         let total_weight_row = sqlx::query(
             r#"SELECT COALESCE(SUM(COALESCE((metadata->>'weight')::numeric, 1.0)), 0.0) as total_weight
                FROM nodes WHERE course_id = $1 AND tenant_id = $2 AND is_archived = FALSE AND node_type = 'lesson'"#,
@@ -290,7 +287,7 @@ impl LessonProgressRepository {
         
         let course_progress = (current_completed_weight / total_weight).min(1.0).max(0.0);
 
-        // 7. Проверка критериев завершения (P0)
+        // 7. Проверка критериев завершения
         let course_criteria = sqlx::query(
             r#"SELECT completion_criteria FROM courses WHERE id = $1 AND tenant_id = $2"#,
         )
@@ -303,7 +300,6 @@ impl LessonProgressRepository {
         let mut completion_triggered = false;
         let mut new_enrollment_status = current_status;
 
-        // P2 Fix: Выполняем тяжёлый статистический запрос только если есть кастомные критерии
         let should_complete = if let Some(criteria_json) = course_criteria {
             let stats_row = sqlx::query(
                 r#"
@@ -369,6 +365,7 @@ impl LessonProgressRepository {
         let created_at = existing_progress.as_ref().map(|p| p.9).unwrap_or(now);
 
         Ok(LessonProgressUpdateResult {
+            course_id, // <-- ДОБАВЛЕНО
             lesson_progress: LessonProgress {
                 id: LessonProgressId(progress_id),
                 tenant_id,

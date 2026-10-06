@@ -27,8 +27,8 @@ pub async fn update_lesson_progress(
     );
 
     match state
-        .lesson_progress_repo
-        .upsert_and_recalculate(
+        .progress_service
+        .update_lesson_progress(
             tenant_id,
             user_id,
             payload.node_id,
