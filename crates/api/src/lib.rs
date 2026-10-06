@@ -26,4 +26,7 @@ pub mod services;
 pub use auth::{JwtClaims, JwtConfig, JwtManager, PasswordHasher};
 pub use database::{DatabasePool, RlsContext, TenantRepository, UserRepository, UserRepositoryError};
 pub use http::create_router;
-pub use services::ProgressService; // <-- ДОБАВЛЕНО
+pub use services::{ 
+	ProgressService,
+	AttemptScoringResult, QuestionScoringResult, ScoringEngine, ScoringResult,
+};
