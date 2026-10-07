@@ -1,6 +1,6 @@
 # Видеоконференцсвязь (ВКС)
 
-**Файл спецификации:** `CONFERENCING.md`
+**Файл спецификации:** `specs/CONFERENCING.md`
 
 > Смежные разделы: инфраструктура ВКС (TURN/STUN, SFU) — в [`DEPLOY.md`](DEPLOY.md) §3; latency budgets для ВКС — в [`NFR.md`](NFR.md) §3 (если применимо); фича-флаги для поэтапного rollout — в [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md); лицензирование — в [`LICENSING.md`](LICENSING.md) §5.3.
 

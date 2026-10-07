@@ -1,6 +1,6 @@
 # Спецификация Технического Задания: Архитектура Базы Данных
 
-**Файл спецификации:** `DB_SCHEMA.md`
+**Файл спецификации:** `specs/DB_SCHEMA.md`
 
 > Сводная картина — в [`ARCHITECTURE.md`](ARCHITECTURE.md) §1 и §3. Регламент миграций — в [`MIGRATIONS.md`](MIGRATIONS.md). Количественные NFR (RTO/RPO, лимиты) — в [`NFR.md`](NFR.md). Правила i18n и локализации — в [`STANDARDS.md`](STANDARDS.md) §«Локализация». Feature Flags — в [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md) и ADR [`2026.09.29-0009.md`](decisions/2026.09.29-0009.md). Identity-First архитектура — в ADR [`2026.10.05-0011.md`](decisions/2026.10.05-0011.md). Обоснование выбора СУБД для LRS — в ADR [`20261006-0012-lrs-storage-decision.md`](decisions/20261006-0012-lrs-storage-decision.md).
 

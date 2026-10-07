@@ -1,5 +1,7 @@
 # Changelog
 
+**Файл спецификации:** `specs/CHANGELOG.md`
+
 Все значимые изменения в этом проекте документируются в этом файле.
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),

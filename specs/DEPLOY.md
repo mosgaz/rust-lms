@@ -1,6 +1,6 @@
 # Спецификация Технического Задания: Развертывание и Инфраструктура
 
-**Файл спецификации:** `DEPLOY.md`
+**Файл спецификации:** `specs/DEPLOY.md`
 
 > Смежные разделы: требования к NFR и SLA — в [`NFR.md`](NFR.md); sizing и retention трейсов — в [`NFR.md`](NFR.md) §6.1 и §6.3; политика Data Residency и 152-ФЗ — в [`STANDARDS.md`](STANDARDS.md) §«Безопасность и приватность»; регламент логирования и OTel — в [`DIAGNOSTICS.md`](DIAGNOSTICS.md) §1–4; zero-copy и `SharedArrayBuffer` — в [`PLUGIN.md`](PLUGIN.md) §2.2 и §4.2; лицензирование — в [`LICENSING.md`](LICENSING.md); Feature Flags — в [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md); ВКС — в [`CONFERENCING.md`](CONFERENCING.md).
 

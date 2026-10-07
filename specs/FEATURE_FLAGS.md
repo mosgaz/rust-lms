@@ -1,6 +1,6 @@
 # Управление функциональными флагами (Feature Flags)
 
-**Файл спецификации:** `FEATURE_FLAGS.md`
+**Файл спецификации:** `specs/FEATURE_FLAGS.md`
 
 > Смежные разделы: разграничение с лицензированием — в [`LICENSING.md`](LICENSING.md); структура таблиц — в [`DB_SCHEMA.md`](DB_SCHEMA.md) §1.2; API — в [`OPEN_API.md`](OPEN_API.md) §3; архитектурное решение — в ADR [`2026.09.29-0009.md`](decisions/2026.09.29-0009.md); RLS — в ADR [`2026.09.28-0001.md`](decisions/2026.09.28-0001.md); Revocation List плагинов — в [`PLUGIN.md`](PLUGIN.md) §7.3.
 

@@ -52,7 +52,6 @@
 | `specs/DIAGNOSTICS.md` | 🟢 | — | Логирование (`tracing`) и распределённый трейсинг (`OpenTelemetry`). |
 | `specs/GOTCHAS.md` | 🟢 | — | Журнал технических ловушек. |
 | `specs/CODING_STANDARDS.md` | 🟢 | — | Правила full-stack Rust, RLS, запреты, `sqlx` vs `SeaORM` (добавлен §2.4 про offline-режим). |
-| `specs/AGENTS.md` | 🟢 | — | Инструкции для AI-агентов. |
 | `specs/decisions/README.md` | 🟢 | — | Реестр ADR, точка входа. |
 | `specs/decisions/2026.09.28-0001.md` | 🟢 | — | ADR: RLS вместо схем-per-tenant. |
 | `specs/decisions/2026.09.28-0002.md` | 🟢 | — | ADR: Иммутабельный xAPI в LRS. |
@@ -66,6 +65,7 @@
 | `specs/decisions/2026.09.29-0010.md` | 🟢 | — | ADR: Supply Chain Security для WASM-плагинов. |
 | `specs/decisions/2026.10.05-0011.md` | 🟢 | — | ADR: Identity-First архитектура (разделение личности и роли в тенанте). |
 | `specs/decisions/2026.10.05-0012.md` | 🟢 | — | ADR: Выбор СУБД для слоя LRS (Аналитика xAPI). |
+| `AGENTS.md` | 🟢 | — | Инструкции для AI-агентов. |
 | `CONTRIBUTING.md` | 🟢 | — | Коммиты, ветвление, Conventional Commits. |
 | `CHANGELOG.md` | 🟢 | — | Журнал изменений. |
 

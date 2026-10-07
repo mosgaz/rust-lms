@@ -1,6 +1,6 @@
 # Регламент миграций БД
 
-**Файл спецификации:** `MIGRATIONS.md`
+**Файл спецификации:** `specs/MIGRATIONS.md`
 
 > Смежные разделы: схема БД — в [`DB_SCHEMA.md`](DB_SCHEMA.md); RTO/RPO и Sizing — в [`NFR.md`](NFR.md) §1.2 и §6.1; Air-gapped поставка и обновления — в [`DEPLOY.md`](DEPLOY.md) §4 и §4.1; Disaster Recovery — в [`DEPLOY.md`](DEPLOY.md) §4.3; формат ADR — в [`decisions/README.md`](decisions/README.md); правило `SeaORM` — в [`CODING_STANDARDS.md`](CODING_STANDARDS.md) §2.3.
 
@@ -36,7 +36,7 @@ sea-orm-cli generate entity \
 
 Формат имени: `YYYYMMDDHHMMSS_short_description.sql` (timestamp-based версия, совместимая с `sqlx migrate`). Префиксы `V`/`U` не используются — порядок задаётся временной меткой.
 
-Сообщение миграции (первая строка файла или сопровождающий комментарий) следует стилю Conventional Commits, как и остальные изменения в репозитории (см. [`CONTRIBUTING.md`](../CONTRIBUTING.md) и [`AGENTS.md`](AGENTS.md) §«Перед задачей» п. 3).
+Сообщение миграции (первая строка файла или сопровождающий комментарий) следует стилю Conventional Commits, как и остальные изменения в репозитории (см. [`CONTRIBUTING.md`](../CONTRIBUTING.md) и [`AGENTS.md`](../AGENTS.md) §«Перед задачей» п. 3).
 
 ## Применение и откат (для разработчиков)
 

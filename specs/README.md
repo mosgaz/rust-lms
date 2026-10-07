@@ -1,5 +1,7 @@
 # Спецификации проекта (specs/)
 
+**Файл спецификации:** `specs/README.md`
+
 Единая точка входа в документацию. Корневой [`README.md`](../README.md) содержит только обзор проекта, технологический стек и быстрый старт — вся навигация по документации живёт здесь, в `specs/README.md`.
 
 ## 🧭 Порядок чтения
@@ -15,7 +17,7 @@
 
 ### Для AI-агента
 
-1. [`AGENTS.md`](AGENTS.md) — первичная точка входа: обязательные шаги перед задачей, запреты, чек-лист.
+1. [`AGENTS.md`](../AGENTS.md) — первичная точка входа: обязательные шаги перед задачей, запреты, чек-лист.
 2. [`SPECIFICATION.md`](SPECIFICATION.md) — источник истины по бизнес-требованиям.
 3. [`STRUCTURE.md`](STRUCTURE.md) — структура каталогов и Dependency Rules.
 4. [`CODING_STANDARDS.md`](CODING_STANDARDS.md) — правила full-stack Rust, RLS, запреты.
@@ -102,7 +104,7 @@
 |:---|:---|
 | [`DEPLOY.md`](DEPLOY.md) | Docker Compose, Ingress Nginx, CSP, COOP/COEP, Air-gapped On-Premise, Vault, OTel, обновления, DR, сертификаты, управление криптоключами, runbook компрометации JWT, Chaos Engineering. |
 | [`LICENSING.md`](LICENSING.md) | Подсистема офлайн-лицензирования для коробочных поставок (формат ключа, привязка, enforcement, grace period, связь с Feature Flags). |
-| [`AGENTS.md`](AGENTS.md) | Инструкции для AI-агентов (Claude Code, Cursor, Cline, Codex, Copilot). |
+| [`AGENTS.md`](../AGENTS.md) | Инструкции для AI-агентов (Claude Code, Cursor, Cline, Codex, Copilot). |
 | [`docker-compose.yml`](docker-compose.yml) | Манифест локального / On-Premise развёртывания (команда запуска — в корневом [`README.md`](../README.md)). |
 
 ### Внешние документы (корень репозитория)

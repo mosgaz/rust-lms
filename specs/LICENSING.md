@@ -1,6 +1,6 @@
 # Подсистема лицензирования (On-Premise / Air-gapped)
 
-**Файл спецификации:** `LICENSING.md`
+**Файл спецификации:** `specs/LICENSING.md`
 
 > Смежные разделы: общие NFR и SLA — в [`NFR.md`](NFR.md); Air-gapped поставка — в [`DEPLOY.md`](DEPLOY.md) §4; управление криптоключами — в [`DEPLOY.md`](DEPLOY.md) §4.4; Disaster Recovery — в [`DEPLOY.md`](DEPLOY.md) §4.3; Feature Flags — в [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md); формат ADR — в [`decisions/README.md`](decisions/README.md); ADR по этой теме — [`decisions/2026.09.29-0008.md`](decisions/2026.09.29-0008.md); ADR по Feature Flags — [`decisions/2026.09.29-0009.md`](decisions/2026.09.29-0009.md).
 

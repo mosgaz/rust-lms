@@ -1,5 +1,7 @@
 # Соответствие отраслевым стандартам
 
+**Файл спецификации:** `specs/STANDARDS.md`
+
 > Источники истины по смежным разделам: схема метаданных — [`DB_SCHEMA.md`](DB_SCHEMA.md) §1.2; количественные лимиты (размер SCORM-пакета, медиа, IndexedDB) — в [`NFR.md`](NFR.md); изоляция LRS — в [`ARCHITECTURE.md`](ARCHITECTURE.md) §3.1; инфраструктура и Data Residency — в [`DEPLOY.md`](DEPLOY.md) §4; Conformance Test Suite — в §«Conformance Testing» этого файла; иммутабельность LRS — в ADR [`2026.09.28-0002.md`](decisions/2026.09.28-0002.md).
 
 ## SCORM
@@ -145,7 +147,7 @@ LRS поддерживает два варианта хранения:
 
 ### UI-строки
 
-* Формат — **Fluent** (`src/locales/{locale}/messages.ftl`), согласовано с [`AGENTS.md`](AGENTS.md) §7.
+* Формат — **Fluent** (`src/locales/{locale}/messages.ftl`), согласовано с [`AGENTS.md`](../AGENTS.md) §7.
 * Обязательный минимум на этапе MVP — `ru` и `en`. Дополнительные локали добавляются по требованию тенанта.
 
 ### RTL

@@ -1,5 +1,7 @@
 ## Спецификация Технического Задания: Руководство по контрибьютингу
-Файл спецификации: CONTRIBUTING.md
+
+**Файл спецификации:** `CONTRIBUTING.md`
+
 ## About this repository
 This is a monorepo for the modular LMS workspace, built on top of a highly performant full-stack Rust architecture using Axum/Actix-web for the backend, Leptos 0.7+ and Tailwind CSS for the frontend, and PostgreSQL with Row-Level Security (RLS) for strict data isolation.
 

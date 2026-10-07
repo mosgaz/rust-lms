@@ -1,6 +1,6 @@
 # Спецификация Технического Задания: Подсистема Микроприложений (Plugins)
 
-**Файл спецификации:** `PLUGIN.md`
+**Файл спецификации:** `specs/PLUGIN.md`
 
 > Сводная картина — в [`ARCHITECTURE.md`](ARCHITECTURE.md) §4. Общие требования к разработчикам плагинов — в [`PLUGIN_DEVELOPMENT_TEMPLATE.md`](PLUGIN_DEVELOPMENT_TEMPLATE.md). Инфраструктура подписи и хранения ключей — в [`DEPLOY.md`](DEPLOY.md). COOP/COEP-заголовки для SharedArrayBuffer — в [`DEPLOY.md`](DEPLOY.md) §2.
 

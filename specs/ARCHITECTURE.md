@@ -1,5 +1,7 @@
 # Архитектура системы (Architecture Design Document)
 
+**Файл спецификации:** `specs/ARCHITECTURE.md`
+
 > **Статус документа:** сводный обзорный документ (Architecture Design Document, ADD). Читается после [`SPECIFICATION.md`](SPECIFICATION.md) и до погружения в профильные спецификации.
 >
 > **Источники истины по разделам:**

@@ -1,5 +1,7 @@
 # Концепция Модульной LMS-платформы
 
+**Файл спецификации:** `specs/SPECIFICATION.md`
+
 (Enterprise-grade Interoperable & Pluggable LMS)
 
 > Сводная архитектурная картина — в [`ARCHITECTURE.md`](ARCHITECTURE.md). Профильные источники истины: [`DB_SCHEMA.md`](DB_SCHEMA.md), [`OPEN_API.md`](OPEN_API.md), [`PLUGIN.md`](PLUGIN.md), [`OFFLINE_SYNC.md`](OFFLINE_SYNC.md), [`STANDARDS.md`](STANDARDS.md), [`COMMUNICATIONS.md`](COMMUNICATIONS.md), [`CONFERENCING.md`](CONFERENCING.md), [`NFR.md`](NFR.md), [`LICENSING.md`](LICENSING.md), [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md).
