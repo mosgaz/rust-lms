@@ -299,9 +299,65 @@ CREATE TABLE tenants (
 
 > **Триггер денормализации веса.** Поле `courses.metadata.total_weight` автоматически пересчитывается триггером `recalculate_course_total_weight()` при любых изменениях `nodes` (создание, удаление, архивация, изменение веса). Это исключает агрегатный запрос `SUM(weight)` при каждом upsert.
 
+#### Таблица: questions (Защищена RLS)
+
+Хранит вопросы для тестов и контрольных точек внутри курсов. Является частью Assessments Engine (Этап 10).
+
+* `id`: UUID (Primary Key).
+* `tenant_id`: UUID (FK → tenants.id ON DELETE CASCADE).
+* `course_id`: UUID (FK → courses.id ON DELETE CASCADE).
+* `title`: VARCHAR(512) (NOT NULL). Текст или заголовок вопроса.
+* `description`: TEXT (NULLable). Дополнительное описание или контекст.
+* `question_type`: VARCHAR(32) (NOT NULL). CHECK: `'multiple_choice'`, `'true_false'`, `'short_answer'`, `'long_answer'`.
+* `options`: JSONB (NULLable). Массив вариантов ответов для `multiple_choice` (структура: `[{"index": 0, "text": "..."}]`).
+* `correct_answer`: TEXT (NULLable). Эталонный ответ для `short_answer` или `true_false`.
+* `points`: INTEGER (NOT NULL, DEFAULT 1). Баллы за правильный ответ. CHECK: `points >= 0`.
+* `order`: INTEGER (NOT NULL). Порядок вопроса в тесте. CHECK: `order >= 1`.
+* `created_at` / `updated_at`: TIMESTAMPTZ.
+* **Ограничения:** Уникальный индекс `UNIQUE (tenant_id, course_id, order)`.
+* **Индексы:** `idx_questions_tenant_id`, `idx_questions_course_id`.
+* **RLS Политика:** `question_tenant_isolation_policy` (фильтрация по `tenant_id = current_setting('app.current_tenant_id', true)`).
+
+#### Таблица: attempts (Защищена RLS)
+
+Фиксирует факт начала и завершения попытки прохождения теста студентом.
+
+* `id`: UUID (Primary Key).
+* `tenant_id`: UUID (FK → tenants.id ON DELETE CASCADE).
+* `user_id`: UUID (FK → users.id ON DELETE CASCADE).
+* `course_id`: UUID (FK → courses.id ON DELETE CASCADE).
+* `status`: VARCHAR(32) (NOT NULL). CHECK: `'in_progress'`, `'completed'`, `'timed_out'`, `'abandoned'`.
+* `started_at`: TIMESTAMPTZ (NOT NULL, DEFAULT NOW()).
+* `completed_at`: TIMESTAMPTZ (NULLable).
+* `score`: NUMERIC(5, 4) (NULLable). Итоговый нормализованный балл (0.0–1.0). CHECK: `score >= 0.0 AND score <= 1.0`.
+* `passed`: BOOLEAN (NULLable). Признак успешной сдачи.
+* `time_limit_seconds`: INTEGER (NULLable). Лимит времени на прохождение. CHECK: `time_limit_seconds > 0`.
+* `time_spent_seconds`: INTEGER (NOT NULL, DEFAULT 0). Фактически затраченное время. CHECK: `time_spent_seconds >= 0`.
+* `attempt_number`: INTEGER (NOT NULL). Порядковый номер попытки пользователя по этому курсу. CHECK: `attempt_number >= 1`.
+* `created_at` / `updated_at`: TIMESTAMPTZ.
+* **Индексы:** `idx_attempts_tenant_id`, `idx_attempts_user_course` (composite: `user_id`, `course_id`), `idx_attempts_status`.
+* **RLS Политика:** `attempt_tenant_isolation_policy` (фильтрация по `tenant_id = current_setting('app.current_tenant_id', true)`).
+
+#### Таблица: answers (Защищена RLS)
+
+Хранит конкретные ответы студента на вопросы в рамках попытки, включая результаты автоматической проверки.
+
+* `id`: UUID (Primary Key).
+* `tenant_id`: UUID (FK → tenants.id ON DELETE CASCADE).
+* `attempt_id`: UUID (FK → attempts.id ON DELETE CASCADE).
+* `question_id`: UUID (FK → questions.id ON DELETE CASCADE).
+* `answer_text`: TEXT (NOT NULL). Текст ответа студента или JSON-представление выбранных вариантов.
+* `is_correct`: BOOLEAN (NULLable). Результат автоматической проверки (NULL для `long_answer`, требующего ручной проверки).
+* `points_earned`: INTEGER (NOT NULL, DEFAULT 0). Заработанные баллы. CHECK: `points_earned >= 0`.
+* `explanation`: TEXT (NULLable). Объяснение правильного ответа (заполняется при `is_correct = false` или для справки).
+* `answered_at`: TIMESTAMPTZ (NOT NULL, DEFAULT NOW()).
+* **Ограничения:** Уникальный индекс `UNIQUE (tenant_id, attempt_id, question_id)` (защита от дублирования ответов на один вопрос в одной попытке).
+* **Индексы:** `idx_answers_attempt_id`, `idx_answers_question_id`.
+* **RLS Политика:** `answer_tenant_isolation_policy` (фильтрация по `tenant_id = current_setting('app.current_tenant_id', true)`).
+
 #### Таблица: quizzes (Защищена RLS)
 
-Конфигурация автоматизированных тестов для контроля знаний внутри модулей.
+> **Примечание:** Высокоуровневая конфигурация тестов. Детальная нормализованная структура вопросов и попыток вынесена в таблицы `questions`, `attempts` и `answers` (см. выше).
 
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
@@ -310,7 +366,7 @@ CREATE TABLE tenants (
 * `title_i18n`: JSONB (NULLable).
 * `version`: INTEGER (NOT NULL, DEFAULT 1).
 * `pool_config`: JSONB (Массив вопросов: типы вопросов, варианты ответов, веса баллов, правила случайной выборки из категорий).
-* `passing_rules`: JSONB (Количество разрешенных попыток, тайм-лимит на прохождение, штрафные коэффициенты).
+* `passing_rules`: JSONB (Количество разрешенных попыток, тайм-ليмит на прохождение, штрафные коэффициенты).
 * `created_at` / `updated_at`: TIMESTAMPTZ.
 
 #### Таблица: assignments (Защищена RLS)
