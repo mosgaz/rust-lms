@@ -789,6 +789,156 @@
 - `403 Forbidden` — недостаточно прав (требуется `instructor` или `admin`).
 - `404 Not Found` — курс не найден.
 
+### 4.6. Тестирование и оценка (Assessments Engine)
+
+Эндпоинты для управления вопросами, прохождения тестов и автоматического подсчёта баллов. Интегрированы с прогрессом обучения (Этап 10).
+
+> **См. также:** `DB_SCHEMA.md` §1.3 (таблицы `questions`, `attempts`, `answers`).
+
+#### `GET /api/v1/courses/:course_id/questions`
+- **Уровень доступа:** Локальный токен тенанта.
+- **Назначение:** Получение списка всех вопросов, привязанных к курсу.
+- **Response (200 OK):** Массив объектов вопросов.
+
+#### `POST /api/v1/courses/:course_id/questions`
+- **Уровень доступа:** Локальный токен тенанта со scope `courses:write`.
+- **Назначение:** Создание нового вопроса для курса.
+- **Request:**
+```json
+{
+  "title": "Какой язык компилируется в WebAssembly?",
+  "description": "Выберите один вариант",
+  "question_type": "multiple_choice",
+  "options": [
+    {"index": 0, "text": "Python"},
+    {"index": 1, "text": "Rust"},
+    {"index": 2, "text": "Ruby"}
+  ],
+  "correct_answer": "1",
+  "points": 10,
+  "order": 1
+}
+```
+- **Response (201 Created):** Созданный объект вопроса.
+- **Ошибки:** `404 Not Found` (курс не существует).
+
+#### `POST /api/v1/courses/:course_id/attempts`
+- **Уровень доступа:** Локальный токен тенанта (студент).
+- **Назначение:** Начало новой попытки прохождения теста. Автоматически определяет `attempt_number`.
+- **Request:**
+```json
+{
+  "time_limit_seconds": 600
+}
+```
+- **Response (201 Created):**
+```json
+{
+  "success": true,
+  "data": {
+    "attempt": {
+      "id": "uuid-v4",
+      "status": "in_progress",
+      "attempt_number": 1,
+      "started_at": "2026-10-07T10:00:00Z"
+    },
+    "questions": [ ... ]
+  },
+  "error": null
+}
+```
+- **Ошибки:** `409 Conflict` (превышен лимит в 10 попыток или уже есть активная попытка).
+
+#### `POST /api/v1/attempts/:attempt_id/answers`
+- **Уровень доступа:** Локальный токен тенанта (студент).
+- **Назначение:** Инкрементальное сохранение ответа на конкретный вопрос в рамках активной попытки.
+- **Request:**
+```json
+{
+  "question_id": "uuid-v4",
+  "answer_text": "Rust"
+}
+```
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "is_correct": true,
+    "points_earned": 10
+  },
+  "error": null
+}
+```
+
+#### `POST /api/v1/attempts/:attempt_id/nodes/:node_id/complete`
+- **Уровень доступа:** Локальный токен тенанта (студент).
+- **Назначение:** Завершение попытки. Сервер самостоятельно подсчитывает итоговый балл (0.0–1.0), определяет факт сдачи (`passed`) и, при успехе, автоматически обновляет прогресс урока (`lesson_progress`) на статус `completed`.
+- **Request:**
+```json
+{
+  "answers": [
+    {
+      "question_id": "uuid-v4-1",
+      "answer_text": "Rust"
+    },
+    {
+      "question_id": "uuid-v4-2",
+      "answer_text": "false"
+    }
+  ]
+}
+```
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid-v4",
+    "status": "completed",
+    "score": 1.0,
+    "passed": true,
+    "time_spent_seconds": 120,
+    "completed_at": "2026-10-07T10:02:00Z"
+  },
+  "error": null
+}
+```
+- **Ошибки:** `404 Not Found` (попытка не найдена), `409 Conflict` (попытка уже завершена или истек лимит времени).
+
+#### `GET /api/v1/attempts/:attempt_id`
+- **Уровень доступа:** Локальный токен тенанта (студент или инструктор).
+- **Назначение:** Получение деталей завершённой или активной попытки, включая все данные ответов и объяснения к ним.
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "attempt": {
+      "id": "uuid-v4",
+      "status": "completed",
+      "score": 1.0,
+      "passed": true
+    },
+    "answers": [
+      {
+        "question_id": "uuid-v4-1",
+        "answer_text": "Rust",
+        "is_correct": true,
+        "points_earned": 10,
+        "explanation": null
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+#### `GET /api/v1/courses/:course_id/users/:user_id/attempts`
+- **Уровень доступа:** Локальный токен тенанта (инструктор, администратор или сам студент).
+- **Назначение:** Получение истории всех попыток пользователя по конкретному курсу, отсортированных по дате начала (новые первыми).
+- **Response (200 OK):** Массив объектов `Attempt`.
+
 ---
 
 ## 5. Feature Flags
@@ -879,7 +1029,7 @@
 ## 9. Связь с другими спецификациями
 
 - `NFR.md` — лимиты, latency budgets, пропускная способность.
-- `DB_SCHEMA.md` — структура таблиц (Identity-First), RLS-политики.
+- `DB_SCHEMA.md` — структура таблиц (Identity-First), RLS-политики, схемы Assessments Engine.
 - `OFFLINE_SYNC.md` — клиентская логика синхронизации.
 - `FEATURE_FLAGS.md` — управление функциональными флагами.
 - `LICENSING.md` — офлайн-лицензирование для коробочных поставок.
