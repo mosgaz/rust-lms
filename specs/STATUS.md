@@ -4,7 +4,7 @@
 
 > Этот файл динамически обновляется AI-агентами после завершения каждого таска. Изменение статусов дублируется записью в `CHANGELOG.md`.
 
-**Текущий этап проекта:** активная реализация серверного ядра (`api` + `server`). Базовый HTTP-цикл (DTO → БД → REST → Axum-хост) замкнут. **Внедрена Identity-First архитектура** (ADR 2026.10.05-0011): глобальная личность (`identities`) + роли в тенантах (`users`), двухшаговая аутентификация с авто-выбором `preferred_tenant_id`. **Завершён Этап 9: Progress Tracking & Completion** — прогресс уроков, критерии завершения курса (4 типа правил, AllOf/AnyOf), сервис `ProgressService`, 5 HTTP-эндпоинтов, 18 интеграционных тестов. **Завершён Этап 10: Assessments Engine** — модели вопросов/попыток/ответов, RLS, репозитории (включая пакетное сохранение ответов), `ScoringEngine`, 7 HTTP-эндпоинтов, автоматическая интеграция с прогрессом при сдаче, 6 интеграционных тестов.
+**Текущий этап проекта:** активная реализация серверного ядра (`api` + `server`). Базовый HTTP-цикл (DTO → БД → REST → Axum-хост) замкнут. **Внедрена Identity-First архитектура** (ADR 2026.10.05-0011): глобальная личность (`identities`) + роли в тенантах (`users`), двухшаговая аутентификация с авто-выбором `preferred_tenant_id`. **Завершён Этап 9: Progress Tracking & Completion** — прогресс уроков, критерии завершения курса, сервис `ProgressService`, 5 HTTP-эндпоинтов, 18 интеграционных тестов. **Завершён Этап 10: Assessments Engine** — модели вопросов/попыток/ответов, RLS, репозитории, `ScoringEngine`, 7 HTTP-эндпоинтов, интеграция с прогрессом. **Завершён Этап 11: Certification Engine (MVP)** — автоматическая выдача сертификатов при завершении курса, генерация PDF «на лету» (`printpdf` + `qrcode`), отправка email-уведомлений (`lettre`, graceful degradation), REST API для списка/скачивания/верификации, интеграционный триггер в прогрессе, 7 интеграционных тестов.
 **Кодовая база:** активная разработка.
 
 ---
@@ -22,7 +22,7 @@
 - 🔴 **НЕ СДЕЛАНО** — функционал отсутствует, контракты не объявлены.
 
 ### Легенда C: Планы
-- ⚪ **ПЛАН** — зафиксировано в спецификации (`ROADMAP.md`), реализация не начата и не декомпозирована на таски.
+- ⚪ **ПЛАН** — зафиксировано в спецификации (`specs/ROADMAP.md`), реализация не начата и не декомпозирована на таски.
 
 ---
 
@@ -35,9 +35,9 @@
 | `specs/ARCHITECTURE.md` | 🟢 | — | Сводный ADD: RLS, Open API, LRS, плагины, ETL. |
 | `specs/NFR.md` | 🟢 | — | SLA, RTO/RPO, concurrency, latency budgets, лимиты. |
 | `specs/STRUCTURE.md` | 🟢 | — | Карта папок, Dependency Rules, состав крейтов (актуализировано под Identity-First). |
-| `specs/DB_SCHEMA.md` | 🟢 | — | Таблицы, RLS, версионирование, i18n, retention, LRS, feature flags, license (актуализировано: `identities` + `users`). |
+| `specs/DB_SCHEMA.md` | 🟢 | — | Таблицы, RLS, версионирование, i18n, retention, LRS, feature flags, license (актуализировано: `identities` + `users`, `certificates`). |
 | `specs/MIGRATIONS.md` | 🟢 | — | Регламент на базе `sqlx` + Runbook для администратора. |
-| `specs/OPEN_API.md` | 🟢 | — | REST/GraphQL, Opaque-токены, SCIM 2.0, signed-url, вебхуки, **offline-sync**, двухшаговая аутентификация. |
+| `specs/OPEN_API.md` | 🟢 | — | REST/GraphQL, Opaque-токены, SCIM 2.0, signed-url, вебхуки, **offline-sync**, двухшаговая аутентификация, **Certification API**. |
 | `specs/OFFLINE_SYNC.md` | 🟢 | — | IndexedDB, синхронизация, конфликты, iOS-лимиты, DRM, офлайн-шелл. |
 | `specs/PLUGIN.md` | 🟢 | — | Двухуровневый рантайм, FSM, подпись и kill switch. |
 | `specs/PLUGIN_DEVELOPMENT_TEMPLATE.md` | 🟢 | — | Шаблон ТЗ для внешних команд (включая a11y). |
@@ -75,15 +75,15 @@
 
 | Компонент / Фича | Тип | Статус | Крейт-ответственный | Примечания / Ссылка на ADR |
 | :-- | :-: | :-: | :-- | :-- |
-| **Базовые DTO сущностей (Identity, User, Tenant)** | Реализация | 🟢 | `shared` | Identity-First модели: `Identity` (глобальная личность), `User` (связь identity-tenant), `Tenant`. Типобезопасные ID (`IdentityId`, `UserId`, `TenantId`). ADR: `2026.10.05-0011.md`. |
-| **Identity-First схема БД** | Реализация | 🟢 | `api` | Миграция `20261003000001`: таблицы `tenants`, `identities` (без RLS), `users` (с RLS). CHECK constraints, индексы. ADR: `2026.10.05-0011.md`. |
+| **Базовые DTO сущностей (Identity, User, Tenant)** | Реализация | 🟢 | `shared` | Identity-First модели: `Identity` (глобальная личность), `User` (связь identity-tenant), `Tenant`. Типобезопасные ID (`IdentityId`, `UserId`, `TenantId`). ADR: `specs/decisions/2026.10.05-0011.md`. |
+| **Identity-First схема БД** | Реализация | 🟢 | `api` | Миграция `20261003000001`: таблицы `tenants`, `identities` (без RLS), `users` (с RLS). CHECK constraints, индексы. ADR: `specs/decisions/2026.10.05-0011.md`. |
 | **IdentityRepository** | Реализация | 🟢 | `api` | CRUD для глобальных личностей: `find_credentials_by_email`, `find_by_id`, `update_preferred_tenant`, `create_with_password`. Unit-тесты. |
 | **UserRepository (Identity-First)** | Реализация | 🟢 | `api` | CRUD для связей identity-tenant: `find_active_tenants_for_identity`, `is_user_active_in_tenant`, `create`, `find_by_id`. Unit-тесты. |
-| **Мультиарендность (Strict Multi-tenancy)** | Реализация | 🟢 | `api` | RLS-интерцептор, репозитории и Axum middleware (JWT Bearer → `IdentityId` + `TenantId` из claims). ADR: `2026.09.28-0001.md`. |
+| **Мультиарендность (Strict Multi-tenancy)** | Реализация | 🟢 | `api` | RLS-интерцептор, репозитории и Axum middleware (JWT Bearer → `IdentityId` + `TenantId` из claims). ADR: `specs/decisions/2026.09.28-0001.md`. |
 | **Хеширование паролей (Argon2id)** | Реализация | 🟢 | `api` | `PasswordHasher` с PHC-форматом, RFC 9106 compliant. Хэш хранится в `identities.password_hash`. 3 unit-теста. |
 | **JWT-инфраструктура (Access/Refresh/Session)** | Реализация | 🟢 | `api` | `JwtManager`, `JwtClaims` с claim `tenant_id`, `TokenType` (Access/Refresh/Session). Session token — без `tenant_id`, TTL 5 мин. Конфигурация через env `RUST_LMS_JWT_*`. 5 unit-тестов. |
 | **AuthService (двухшаговая аутентификация)** | Реализация | 🟢 | `api` | `authenticate` → `AuthResult::SingleTenant` (авто-выбор по `preferred_tenant_id`) или `AuthResult::MultiTenant` (session_token + список). `select_tenant` — выбор тенанта, обновление `preferred_tenant_id`. `refresh`, `create_user_in_tenant`. 3 unit-теста. |
-| **preferred_tenant_id (авто-выбор тенанта)** | Реализация | 🟢 | `api` | Глобальное поле в `identities`, обновляется при `select_tenant`. Используется для бесшовного входа при следующем логине. ADR: `2026.10.05-0011.md`. |
+| **preferred_tenant_id (авто-выбор тенанта)** | Реализация | 🟢 | `api` | Глобальное поле в `identities`, обновляется при `select_tenant`. Используется для бесшовного входа при следующем логине. ADR: `specs/decisions/2026.10.05-0011.md`. |
 | **JWT middleware (Bearer auth)** | Реализация | 🟢 | `api` | Извлечение Bearer-токена, валидация, инъекция `IdentityId`/`TenantId` в extensions. Отклонение refresh/session токенов для защищённых маршрутов. 2 integration-теста. |
 | **REST-эндпоинты аутентификации** | Реализация | 🟢 | `api` | `POST /api/v1/auth/login`, `POST /api/v1/auth/select-tenant`, `POST /api/v1/auth/refresh`. Унифицированный `ApiResponse<T>`. 2 unit-теста. |
 | **Динамический Provisioning тенантов** | Реализация | 🟡 | `api` | REST-эндпоинты `POST/GET /api/v1/tenants` реализованы (заглушки). Ожидает расширения (обновление, деактивация, SCIM). |
@@ -101,38 +101,43 @@
 | **Assessments Engine: REST API** | Реализация | 🟢 | `api` | 7 эндпоинтов: создание/список вопросов, старт попытки, инкрементальное сохранение ответа, завершение попытки, детали попытки, история попыток. |
 | **Assessments Engine: Интеграция с прогрессом** | Реализация | 🟢 | `api` | Автоматический вызов `ProgressService::update_lesson_progress` со статусом `Completed` при успешной сдаче теста (score >= 0.7). |
 | **Assessments Engine: Интеграционные тесты** | Реализация | 🟢 | `api` | Файл `crates/api/tests/assessment_flow.rs`: 6 тестов (разные типы вопросов, полный цикл, частичный ответ, лимит попыток, прогресс, история). |
+| **Certification Engine: Модели и миграции** | Реализация | 🟢 | `shared` / `api` | Таблица `certificates` с RLS, `verification_hash` (SHA-256), `target_type`, `target_id`. Миграция `20261011000001_create_certificates.sql`. |
+| **Certification Engine: Репозитории** | Реализация | 🟢 | `api` | `CertificateRepository`: `create`, `find_by_id`, `find_by_verification_hash`, `list_by_user`. |
+| **Certification Engine: Сервисы (PDF + Email)** | Реализация | 🟢 | `api` | `CertificateService`: `issue_course_certificate`, `generate_certificate_pdf` (on-demand, `printpdf` + `qrcode`, DejaVuSans), `verify_certificate`. `EmailService` (`lettre`, STARTTLS, graceful degradation). |
+| **Certification Engine: REST API** | Реализация | 🟢 | `api` | 3 эндпоинта: `GET /api/v1/certificates`, `GET /api/v1/certificates/verify/:hash` (публичный), `GET /api/v1/certificates/:id/download` (on-demand PDF). |
+| **Certification Engine: Интеграция с прогрессом** | Реализация | 🟢 | `api` | Автоматический триггер `issue_course_certificate` в `update_lesson_progress` при `completion_triggered = true` (graceful degradation: ошибки логируются, прогресс не ломается). |
+| **Certification Engine: Интеграционные тесты** | Реализация | 🟢 | `api` | Файл `crates/api/tests/certificate_integration.rs`: 7 тестов (создание, верификация по хешу, список, генерация PDF, email-стаб, интеграция сервиса, строгая RLS-изоляция). |
 | **Репозитории иерархии (CourseRepository + NodeRepository)** | Реализация | 🟢 | `api` | `CourseRepository`: create, find_by_id, find_by_tenant, update, delete, publish_version. `NodeRepository`: create (с автогенерацией ltree path), find_by_id, find_children, find_subtree (ltree <@), find_course_tree, update, move_node (пересчёт path поддерева), delete (каскадно), reorder. Unit-тесты проходят. |
 | **Content Versioning & Cohort Pinning** | Реализация | 🔴 | `api` | `version`, `course_versions`, `batches.content_version`. |
-| **Движок LRS (Аналитика xAPI)** | Реализация | 🔴 | `api` | Инвариантный слой TimescaleDB/ClickHouse. ADR: `2026.09.28-0002.md`. |
+| **Движок LRS (Аналитика xAPI)** | Реализация | 🔴 | `api` | Инвариантный слой TimescaleDB/ClickHouse. ADR: `specs/decisions/2026.09.28-0002.md`. |
 | **Offline-First PWA: IndexedDB Storage** | Реализация | 🟢 | `client` | `storage.rs`: `offline_xapi_statements`, `client_clock`. |
 | **Offline-First PWA: Sync Algorithm** | Реализация | 🟡 | `client` | Чанки (50 шт.), Two-Phase Commit, Retry (3/10). **Синхронизация с бэкендом работает через `mock_sync_api`.** |
 | **Offline-First PWA: Service Worker & Assets** | Реализация | 🟡 | `client` | Базовый скеффолд: `manifest.json`, `sw.js`, иконки, splash-экраны. |
 | **Ограничения iOS PWA (деградация)** | Реализация | 🟢 | `client` / `docs` | Лимиты IndexedDB, отсутствие Background Sync задокументированы. |
-| **Signed URLs для медиа** | Реализация | 🔴 | `api` / `client` | HMAC-SHA256 + TTL; см. `OPEN_API.md` §3.3. |
+| **Signed URLs для медиа** | Реализация | 🔴 | `api` / `client` | HMAC-SHA256 + TTL; см. `specs/OPEN_API.md` §3.3. |
 | **DRM (Widevine / FairPlay / PlayReady)** | Реализация | 🔴 | `api` / `client` | Опционально для Enterprise-тенантов. |
 | **Рантайм плагинов Контур А (iframe)** | Реализация | 🔴 | `server` / `client` | Мост postMessage и CSP-изоляция шлюза. |
-| **Рантайм плагинов Контур Б (WASM)** | Реализация | 🔴 | `server` / `client` | Zero-copy биндинги. Подпись и kill switch — ADR: `2026.09.29-0003.md`. |
-| **Подпись и kill switch WASM-плагинов** | Реализация | 🔴 | `api` / `client` | Ed25519 + Revocation List. ADR: `2026.09.29-0003.md`. |
-| **SBOM и сканирование уязвимостей плагинов** | Реализация | 🔴 | `api` | Генерация CycloneDX, `osv-scanner`. ADR: `2026.09.29-0010.md`. |
-| **Автоматическая сертификация** | Реализация | 🔴 | `server` | Фоновые воркеры (Tokio); Calculations Engine — часть `api`. |
-| **Импорт SCORM 1.2 / 2004** | Реализация | 🔴 | `api` | Два режима: конвертация / runtime. См. `STANDARDS.md` §SCORM. |
-| **LTI 1.3 (Consumer + Provider)** | Реализация | 🔴 | `api` | Требования — в `STANDARDS.md`. |
+| **Рантайм плагинов Контур Б (WASM)** | Реализация | 🔴 | `server` / `client` | Zero-copy биндинги. Подпись и kill switch — ADR: `specs/decisions/2026.09.29-0003.md`. |
+| **Подпись и kill switch WASM-плагинов** | Реализация | 🔴 | `api` / `client` | Ed25519 + Revocation List. ADR: `specs/decisions/2026.09.29-0003.md`. |
+| **SBOM и сканирование уязвимостей плагинов** | Реализация | 🔴 | `api` | Генерация CycloneDX, `osv-scanner`. ADR: `specs/decisions/2026.09.29-0010.md`. |
+| **Импорт SCORM 1.2 / 2004** | Реализация | 🔴 | `api` | Два режима: конвертация / runtime. См. `specs/STANDARDS.md` §SCORM. |
+| **LTI 1.3 (Consumer + Provider)** | Реализация | 🔴 | `api` | Требования — в `specs/STANDARDS.md`. |
 | **Conformance Testing (базовый CLI)** | Реализация | 🔴 | `cli` / `server` | CLI `rust-lms-conformance` + опциональный сервис. |
 | **Доступность WCAG 2.2 AA** | Реализация | 🟡 | `ui` / `client` | Базовая структура компонентов. axe-core в CI — в плане. |
 | **Локализация (i18n / l10n)** | Реализация | 🟡 | `ui` / `client` | Fluent, `*_i18n` поля, RTL. Базовые файлы `messages.ftl` созданы. |
 | **Retention Policies (ILM)** | Реализация | 🔴 | `server` | Cron-воркеры + таблица `retention_policies`. |
-| **Application-Level Encryption (ALE)** | Реализация | 🔴 | `api` | Envelope encryption, KMS/Vault. ADR: `2026.09.29-0004.md`. |
-| **Data Residency (фиксация региона)** | Реализация | 🔴 | `api` / `server` | Размещение по регионам. ADR: `2026.09.29-0005.md`. |
-| **OpenTelemetry (SDK + OTLP + span attrs)** | Реализация | 🔴 | `api` / `server` / `client` | См. `DIAGNOSTICS.md` §4. |
-| **Подсистема лицензирования** | Реализация | 🔴 | `api` / `server` / `cli` | Ed25519-ключ, три типа binding, soft/hard enforcement. ADR: `2026.09.29-0008.md`. |
-| **Feature Flags (Global + Tenant Overrides)** | Реализация | 🔴 | `api` / `client` | PostgreSQL + LISTEN/NOTIFY + in-memory кэш. ADR: `2026.09.29-0009.md`. |
-| **Чаты (личные / групповые / курс / задание)** | Реализация | 🔴 | `api` | Требования — в `COMMUNICATIONS.md`. |
-| **Комментарии к контенту (ветки)** | Реализация | 🔴 | `api` | Требования — в `COMMUNICATIONS.md`. |
-| **Уведомления (in-app / Email / Telegram / Webhook)** | Реализация | 🔴 | `server` | Требования — в `COMMUNICATIONS.md`. |
-| **ВКС: P2P (Mesh) для 1-to-1** | Реализация | 🔴 | `client` | Требования — в `CONFERENCING.md`. |
-| **ВКС: SFU (Mediasoup/Janus) для групп** | Реализация | 🔴 | `api` | Требования — в `CONFERENCING.md`. |
-| **ВКС: Whiteboard, шеринг, опросы** | Реализация | 🔴 | `ui` | Требования — в `CONFERENCING.md`. |
-| **ВКС: локальные TURN/STUN (Air-gapped)** | Реализация | 🔴 | `server` | Требования — в `CONFERENCING.md` и `DEPLOY.md`. |
+| **Application-Level Encryption (ALE)** | Реализация | 🔴 | `api` | Envelope encryption, KMS/Vault. ADR: `specs/decisions/2026.09.29-0004.md`. |
+| **Data Residency (фиксация региона)** | Реализация | 🔴 | `api` / `server` | Размещение по регионам. ADR: `specs/decisions/2026.09.29-0005.md`. |
+| **OpenTelemetry (SDK + OTLP + span attrs)** | Реализация | 🔴 | `api` / `server` / `client` | См. `specs/DIAGNOSTICS.md` §4. |
+| **Подсистема лицензирования** | Реализация | 🔴 | `api` / `server` / `cli` | Ed25519-ключ, три типа binding, soft/hard enforcement. ADR: `specs/decisions/2026.09.29-0008.md`. |
+| **Feature Flags (Global + Tenant Overrides)** | Реализация | 🔴 | `api` / `client` | PostgreSQL + LISTEN/NOTIFY + in-memory кэш. ADR: `specs/decisions/2026.09.29-0009.md`. |
+| **Чаты (личные / групповые / курс / задание)** | Реализация | 🔴 | `api` | Требования — в `specs/COMMUNICATIONS.md`. |
+| **Комментарии к контенту (ветки)** | Реализация | 🔴 | `api` | Требования — в `specs/COMMUNICATIONS.md`. |
+| **Уведомления (in-app / Email / Telegram / Webhook)** | Реализация | 🟢 | `api` | Базовая отправка email с PDF реализована в рамках Этапа 11. Расширение каналов — в плане. |
+| **ВКС: P2P (Mesh) для 1-to-1** | Реализация | 🔴 | `client` | Требования — в `specs/CONFERENCING.md`. |
+| **ВКС: SFU (Mediasoup/Janus) для групп** | Реализация | 🔴 | `api` | Требования — в `specs/CONFERENCING.md`. |
+| **ВКС: Whiteboard, шеринг, опросы** | Реализация | 🔴 | `ui` | Требования — в `specs/CONFERENCING.md`. |
+| **ВКС: локальные TURN/STUN (Air-gapped)** | Реализация | 🔴 | `server` | Требования — в `specs/CONFERENCING.md` и `specs/DEPLOY.md`. |
 
 ---
 
@@ -143,13 +148,13 @@
 | Направление | Статус | Примечания |
 | :-- | :-: | :-- |
 | Аналитика обучения (дашборды, отчёты, алерты) | ⚪ | Сбор данных покрыт LRS; слой осмысления — в плане. |
-| Сертификация и валидация (Open Badges / Blockcerts) | ⚪ | Выдача и верификация сертификатов; см. `SPECIFICATION.md` §4. |
+| **Сертификация (полная версия)** | ⚪ | **Базовый MVP (Этап 11) завершён.** В плане (Этап 37): цифровые значки (Open Badges), публичный реестр, кастомные локализованные шаблоны. |
 | Платежи и биллинг (подписки, счета, налоги) | ⚪ | Интеграция с провайдерами. |
 | Поиск (Elasticsearch/Meilisearch) | ⚪ | Полнотекстовый поиск по контенту. |
 | Рекомендации курсов и материалов | ⚪ | На основе истории и профиля. |
 | Вебинары с записью | ⚪ | Поверх встроенной ВКС. |
-| **Мобильное приложение (нативное)** | ⚪ | **Приоритет для iOS-сегмента** (см. `OFFLINE_SYNC.md` §1.3). Технологии будут определены позже. |
+| **Мобильное приложение (нативное)** | ⚪ | **Приоритет для iOS-сегмента** (см. `specs/OFFLINE_SYNC.md` §1.3). Технологии будут определены позже. |
 | Аудит и compliance (SIEM, retention) | ⚪ | Расширение `specs/STANDARDS.md`. |
 | Conformance Testing (расширение для On-Premise) | ⚪ | Полный ADL SCORM Test Suite, cmi5, LTI 1.3, SCIM 2.0; UI в `cpanel`. |
 | Расширенное a11y-тестирование (Playwright + скринридеры) | ⚪ | Для Enterprise-сертификации WCAG 2.2 AA. |
-| Feature Flags: A/B-тестирование и автоматизированный rollout | ⚪ | Расширение базового механизма (см. `ROADMAP.md`). |
+| Feature Flags: A/B-тестирование и автоматизированный rollout | ⚪ | Расширение базового механизма (см. `specs/ROADMAP.md`). |
