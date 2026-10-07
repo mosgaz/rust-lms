@@ -25,4 +25,4 @@ pub use node::{NodeRepository, NodeRepositoryError};
 pub use tenant::{TenantRepository, TenantRepositoryError};
 pub use user::{UserRepository, UserRepositoryError};
 pub use question::{QuestionRepository, QuestionRepositoryError};
-pub use attempt::{AttemptRepository, AttemptRepositoryError};
+pub use attempt::{AttemptRepository, AttemptRepositoryError, ScoredAnswer};

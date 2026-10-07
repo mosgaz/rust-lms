@@ -46,6 +46,21 @@ pub enum AttemptRepositoryError {
     },
 }
 
+/// Ответ с уже подсчитанными баллами (для сохранения в БД).
+#[derive(Debug, Clone)]
+pub struct ScoredAnswer {
+    /// Идентификатор вопроса.
+    pub question_id: rust_lms_shared::QuestionId,
+    /// Текст ответа студента.
+    pub answer_text: String,
+    /// Признак правильности ответа.
+    pub is_correct: bool,
+    /// Заработанные баллы.
+    pub points_earned: i32,
+    /// Объяснение (для неверных ответов или ручной проверки).
+    pub explanation: Option<String>,
+}
+
 /// Репозиторий попыток.
 #[derive(Debug, Clone)]
 pub struct AttemptRepository {
@@ -350,6 +365,97 @@ impl AttemptRepository {
 
         let count: i64 = row.get("cnt");
         Ok(count > 0)
+    }
+
+    /// Сохраняет пакет ответов студента в рамках попытки.
+    ///
+    /// # Ошибки
+    ///
+    /// Возвращает `NotFound`, если попытка не существует.
+    /// Возвращает `AlreadyCompleted`, если попытка уже завершена.
+    pub async fn save_answers(
+        &self,
+        tenant_id: TenantId,
+        attempt_id: AttemptId,
+        scored_answers: &[ScoredAnswer],
+    ) -> Result<(), AttemptRepositoryError> {
+        let current = self.get_by_id(tenant_id, attempt_id).await?;
+        if current.status != AttemptStatus::InProgress {
+            return Err(AttemptRepositoryError::AlreadyCompleted(attempt_id));
+        }
+
+        if scored_answers.is_empty() {
+            return Ok(());
+        }
+
+        let mut tx = self.pool.begin().await?;
+
+        for ans in scored_answers {
+            sqlx::query(
+                r#"
+                INSERT INTO answers (
+                    tenant_id, attempt_id, question_id,
+                    answer_text, is_correct, points_earned, explanation
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (attempt_id, question_id)
+                DO UPDATE SET
+                    answer_text = EXCLUDED.answer_text,
+                    is_correct = EXCLUDED.is_correct,
+                    points_earned = EXCLUDED.points_earned,
+                    explanation = EXCLUDED.explanation
+                "#,
+            )
+            .bind(tenant_id.0)
+            .bind(attempt_id.0)
+            .bind(ans.question_id.0)
+            .bind(&ans.answer_text)
+            .bind(ans.is_correct)
+            .bind(ans.points_earned)
+            .bind(&ans.explanation)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Получает ответы для конкретной попытки (для просмотра деталей).
+    pub async fn get_answers_for_attempt(
+        &self,
+        tenant_id: TenantId,
+        attempt_id: AttemptId,
+    ) -> Result<Vec<rust_lms_shared::models::answer::Answer>, AttemptRepositoryError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, tenant_id, attempt_id, question_id, answer_text,
+                   is_correct, points_earned, answered_at, explanation
+            FROM answers
+            WHERE attempt_id = $1 AND tenant_id = $2
+            ORDER BY answered_at
+            "#,
+        )
+        .bind(attempt_id.0)
+        .bind(tenant_id.0)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.iter()
+            .map(|row| {
+                Ok(rust_lms_shared::models::answer::Answer {
+                    id: rust_lms_shared::models::answer::AnswerId(row.get("id")),
+                    tenant_id: TenantId(row.get("tenant_id")),
+                    attempt_id: AttemptId(row.get("attempt_id")),
+                    question_id: rust_lms_shared::QuestionId(row.get("question_id")),
+                    answer_text: row.get("answer_text"),
+                    is_correct: row.get("is_correct"),
+                    points_earned: row.get("points_earned"),
+                    answered_at: row.get("answered_at"),
+                    explanation: row.get("explanation"),
+                })
+            })
+            .collect()
     }
 
     /// Преобразует строку базы данных в модель `Attempt`.

@@ -12,6 +12,7 @@ pub mod lesson_progress;
 pub mod node;
 pub mod tenant;
 pub mod user;
+pub mod assessment;
 
 pub use auth::{login, refresh, select_tenant};
 pub use batch::{create_batch, delete_batch, get_batch, list_batches, update_batch};
@@ -32,11 +33,16 @@ pub use node::{
 pub use tenant::{create_tenant, get_tenant};
 pub use user::{create_user, get_user};
 
+// Добавлены submit_answer и get_attempt_details
+pub use assessment::{
+    complete_attempt, create_question, get_attempt_details, list_attempts, list_questions,
+    start_attempt, submit_answer,
+};
+
 use crate::auth::AuthService;
 use crate::database::{
-    BatchEnrollmentRepository, BatchRepository, CourseEnrollmentRepository, CourseRepository,
-    NodeRepository, TenantRepository, UserRepository,
-	QuestionRepository, AttemptRepository,
+    AttemptRepository, BatchEnrollmentRepository, BatchRepository, CourseEnrollmentRepository,
+    CourseRepository, NodeRepository, QuestionRepository, TenantRepository, UserRepository,
 };
 use crate::services::ProgressService;
 
@@ -61,9 +67,9 @@ pub struct AppState {
     pub course_enrollment_repo: CourseEnrollmentRepository,
     /// Сервис для работы с прогрессом обучения.
     pub progress_service: ProgressService,
-	/// Репозиторий вопросов для тестов.
-	pub question_repo: QuestionRepository,
-	/// Репозиторий попыток прохождения тестов.
+    /// Репозиторий вопросов для тестов.
+    pub question_repo: QuestionRepository,
+    /// Репозиторий попыток прохождения тестов.
     pub attempt_repo: AttemptRepository,
 }
 

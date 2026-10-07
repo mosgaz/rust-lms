@@ -10,9 +10,9 @@ use sqlx::PgPool;
 
 use crate::auth::{AuthService, JwtConfig, JwtManager};
 use crate::database::{
-    BatchEnrollmentRepository, BatchRepository, CourseEnrollmentRepository, CourseRepository,
-    IdentityRepository, LessonProgressRepository, NodeRepository, TenantRepository, UserRepository,
-	QuestionRepository, AttemptRepository,
+    AttemptRepository, BatchEnrollmentRepository, BatchRepository, CourseEnrollmentRepository,
+    CourseRepository, IdentityRepository, LessonProgressRepository, NodeRepository,
+    QuestionRepository, TenantRepository, UserRepository,
 };
 use crate::services::ProgressService;
 
@@ -42,8 +42,8 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
         jwt_manager.clone(),
     );
 
-	let question_repo = QuestionRepository::new(pool.clone());
-	let attempt_repo = AttemptRepository::new(pool.clone());
+    let question_repo = QuestionRepository::new(pool.clone());
+    let attempt_repo = AttemptRepository::new(pool.clone());
 
     let state = AppState {
         tenant_repo,
@@ -55,8 +55,8 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
         batch_enrollment_repo,
         course_enrollment_repo,
         progress_service,
-		question_repo,
-		attempt_repo,
+        question_repo,
+        attempt_repo,
     };
 
     let public_routes = Router::new()
@@ -128,6 +128,31 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
         .route(
             "/api/v1/users/:id/enrollments",
             get(handlers::list_user_course_enrollments),
+        )
+        // === Этап 10: Assessments Engine ===
+        .route(
+            "/api/v1/courses/:course_id/questions",
+            get(handlers::list_questions).post(handlers::create_question),
+        )
+        .route(
+            "/api/v1/courses/:course_id/attempts",
+            post(handlers::start_attempt),
+        )
+        .route(
+            "/api/v1/courses/:course_id/users/:user_id/attempts",
+            get(handlers::list_attempts),
+        )
+        .route(
+            "/api/v1/attempts/:attempt_id/answers",
+            post(handlers::submit_answer),
+        )
+        .route(
+            "/api/v1/attempts/:attempt_id",
+            get(handlers::get_attempt_details),
+        )
+        .route(
+            "/api/v1/attempts/:attempt_id/nodes/:node_id/complete",
+            post(handlers::complete_attempt),
         )
         .layer(middleware::from_fn(jwt_auth));
 
