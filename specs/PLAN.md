@@ -16,7 +16,7 @@
 | 2 | Идентификация и аутентификация | 🔴 P0 | ✅ Завершён | Этап 1 |
 | 3 | Identity-First архитектура | 🔴 P0 | ✅ Завершён | Этап 2 |
 | 4 | Multi-tenancy и RLS | 🔴 P0 | ✅ Завершён | Этап 3 |
-| 5 | Content Hierarchy (Courses + Nodes) | — | ✅ Завершён | Этап 4 |
+| 5 | Content Hierarchy (Courses + Nodes) | 🔴 P0 | ✅ Завершён | Этап 4 |
 | 6 | API Layer (REST handlers) | 🔴 P0 | ✅ Завершён | Этап 5 |
 | 7 | Course Enrollments (Self-paced) | 🔴 P0 | ✅ Завершён | Этап 6 |
 | 8 | Batches & Enrollments | 🔴 P0 | ✅ Завершён | Этап 7 |
