@@ -1,101 +1,164 @@
-## Спецификация Технического Задания: Руководство по контрибьютингу
+# Руководство по коммитам и ветвлению
 
 **Файл спецификации:** `CONTRIBUTING.md`
 
-## About this repository
-This is a monorepo for the modular LMS workspace, built on top of a highly performant full-stack Rust architecture using Axum/Actix-web for the backend, Leptos 0.7+ and Tailwind CSS for the frontend, and PostgreSQL with Row-Level Security (RLS) for strict data isolation.
+## О репозитории
 
-## Architectural Rules to Follow
+Это монорепозиторий модульной LMS-платформы, построенной на высокопроизводительном full-stack Rust-стеке: `Axum` на бэкенде, `Leptos 0.8+` и `Tailwind CSS` на фронтенде, `PostgreSQL` с Row-Level Security (RLS) для строгой изоляции данных организаций.
 
-* Strict Multi-tenancy: Every query modifying or reading organization data must enforce Row-Level Security via tenant_id session context. Never bypass RLS in tenant-specific business logic.
-* WASM-Isomorphic Contours: lms-core-frontend compiles strictly to wasm32-unknown-unknown. It must never import crates with native OS-level dependencies (lms-core-backend, lms-database-db, lms-task-worker).
-* Immutable Tracking (LRS): Offline progress synchronization must follow the immutable fact principle. Never rewrite or use destructive resolution (like Last Write Wins) on xAPI Statements.
+Полная карта крейтов, их зон ответственности и правил направленности зависимостей — в [`specs/STRUCTURE.md`](specs/STRUCTURE.md). Это единственный источник истины по именам крейтов и путям.
 
-------------------------------
-## Development## Clone and setup
+## Архитектурные правила
 
+Ниже — только те правила, которые напрямую влияют на процесс контрибьютинга. Полные регламенты — в профильных документах `specs/`.
+
+- **Strict Multi-tenancy:** любая операция чтения или записи данных организации обязана устанавливать контекст тенанта (`app.current_tenant_id`) в рамках ACID-транзакции. Обход RLS в бизнес-логике запрещён. См. [`specs/DB_SCHEMA.md`](specs/DB_SCHEMA.md) и [`specs/CODING_STANDARDS.md`](specs/CODING_STANDARDS.md) §2.
+
+- **WASM-Isomorphic Contours:** клиентский крейт компилируется строго под `wasm32-unknown-unknown` и не должен импортировать крейты с нативными OS-зависимостями (бэкенд, СУБД, фоновые задачи). Полный граф зависимостей — в [`specs/STRUCTURE.md`](specs/STRUCTURE.md) §4.
+
+- **Immutable Tracking (LRS):** синхронизация офлайн-прогресса следует принципу неизменяемых фактов. Перезапись xAPI Statements и деструктивное разрешение конфликтов (Last Write Wins) запрещены. См. [`specs/OFFLINE_SYNC.md`](specs/OFFLINE_SYNC.md).
+
+---
+
+## Разработка
+
+### Клонирование и настройка
+
+```bash
 git clone git@github.com:mosgaz/rust-lms.git
 cd rust-lms
-# Install essential full-stack Rust build tools
+
+# Установка инструментов сборки full-stack Rust
 cargo install --locked cargo-leptos
 cargo install --locked leptosfmt
 rustup target add wasm32-unknown-unknown
+```
 
-## Requirements
+### Требования
 
-* Rust Stable (Refer to rust-toolchain.toml for the current exact version).
-* Tailwind CSS available in your system PATH.
-* PostgreSQL 15+ with TimescaleDB extension or a running local Docker environment.
+- **Rust Stable.** Точная версия зафиксирована в `rust-toolchain.toml`.
+- **Tailwind CSS** доступен в `PATH` системы.
+- **PostgreSQL 15+** с расширением TimescaleDB — либо запущенный локальный Docker-контейнер.
 
-## Running the Infrastructure locally
-To spin up the foundational data layer and object storage (MinIO) for development:
+### Запуск инфраструктуры локально
 
-docker compose -f specs/DEPLOY.md up -d nexus-postgres-core nexus-dam-storage
+Для поднятия слоя данных и объектного хранилища (MinIO) в режиме разработки:
 
-## Running the Live Development Environment
-To start the full-stack hot-reload server (Backend API + Frontend Hydration) managed by cargo-leptos:
+```bash
+docker compose -f specs/docker-compose.yml up -d core-postgres-db dam-object-storage
+```
 
-cd crates/lms-core-backend
+Описание инфраструктуры — в [`specs/DEPLOY.md`](specs/DEPLOY.md).
+
+### Запуск live-окружения разработки
+
+Для запуска full-stack сервера с горячей перезагрузкой (Backend API + Frontend Hydration) под управлением `cargo-leptos`:
+
+```bash
+cd crates/server
 cargo leptos watch
+```
 
-------------------------------
-## Verification & Formatting
-We maintain extremely high code quality standards enforced via compile-time constraints and strict CI linting. Always run the validation pipeline before submitting your pull request.
-## 1. Code Style and Formatters
-Always run both formatters before committing changes to ensure standard Rust layout and clean Leptos component trees:
+> **Примечание.** Точка входа `cargo leptos watch` может отличаться в зависимости от конфигурации `cargo-leptos` в `Cargo.toml` и `Leptos.toml`. Если команда не работает из `crates/server`, проверьте актуальный рабочий каталог в [`specs/STRUCTURE.md`](specs/STRUCTURE.md) или в корневом `Cargo.toml`.
 
-cargo fmt --all && leptosfmt **/*.rs
+---
 
-## 2. Static Analysis and Linters
-Code must compile with zero warnings or lints across all targets:
+## Проверка и форматирование
 
+Проект поддерживает высокие стандарты качества кода, обеспечиваемые compile-time ограничениями и строгим CI-линтованием. Перед отправкой pull request всегда прогоняйте полный набор проверок.
+
+### 1. Стиль кода и форматтеры
+
+Перед коммитом запускайте оба форматтера — для стандартной раскладки Rust-кода и чистоты Leptos-шаблонов:
+
+```bash
+cargo fmt --all && leptosfmt '**/*.rs'
+```
+
+### 2. Статический анализ и линтеры
+
+Код должен компилироваться без единого warning или lint на всех целях:
+
+```bash
 cargo clippy --workspace --all-targets --all-features -- -D warnings
+```
 
-## 3. Test Workspace
-Run all unit, integration, and geometry/ETL snapshot tests:
+### 3. Тесты воркспейса
 
+Запуск всех unit-, integration- и snapshot-тестов (геометрия/ETL):
+
+```bash
 cargo test --workspace
+```
 
-Note: Any changes made to lms-etl-mapper or lms-lrs-analytics require high data-density snapshot validation coverage.
-------------------------------
-## Commit Convention (Conventional Commits)
-We strictly adhere to the Conventional Commits specification for automatic generation of semantic versioning and formation of CHANGELOG.md. Every commit must follow the template: category(scope): message format for automated changelog generation:
+> **Примечание.** Изменения в ETL-парсерах и LRS-аналитике требуют повышенного покрытия snapshot-валидацией на данных высокой плотности. Точные модули — в [`specs/STRUCTURE.md`](specs/STRUCTURE.md) и [`specs/CODING_STANDARDS.md`](specs/CODING_STANDARDS.md) §6.
 
-Allowed Commit Categories:
+---
 
-| Category | When to use |
+## Соглашение о коммитах (Conventional Commits)
+
+Проект строго придерживается спецификации Conventional Commits для автоматической генерации семантического версионирования и формирования `CHANGELOG.md`. Каждый коммит должен соответствовать шаблону:
+
+```
+категория(область): описание
+```
+
+### Разрешённые категории
+
+| Категория | Когда использовать |
 |---|---|
-| feat | New platform capability, core block, or core feature |
-| fix | Bug fix (e.g., frontend rendering bug, analytical query fix) |
-| docs | Documentation modifications in specs/* or code comments |
-| refactor | Code restructuring without altering backend API or UX |
-| build | Workspace dependencies or Cargo.toml updates |
-| test | Adding, updating, or expanding snapshot/unit tests |
-| ci | CI pipeline configuration or Dockerfile modifications |
-| chore | Housekeeping, formatting, lint resolution |
+| `feat` | Новая возможность платформы, ключевой блок или фича. |
+| `fix` | Исправление бага (например, ошибка рендеринга на фронтенде, исправление аналитического запроса). |
+| `docs` | Изменения документации в `specs/` или комментариев в коде. |
+| `refactor` | Реструктуризация кода без изменения backend API или UX. |
+| `build` | Обновления зависимостей воркспейса или `Cargo.toml`. |
+| `test` | Добавление, обновление или расширение snapshot/unit-тестов. |
+| `ci` | Изменения конфигурации CI-пайплайна или `Dockerfile`. |
+| `chore` | Хаус-кипинг, форматирование, устранение lint-замечаний. |
 
-Scopes of Responsibility:
+### Области ответственности (scopes)
 
-* shared — changes to data structures or xAPI contracts.
-* ui — modification of the shared design system and atomic components.
-* api — changes to the server DBMS/LRS layer.
-* website / student / cpanel — changes to logic inside the isomorphic application contours of client.
-* server — changes to the Axum entry point or Tokio initialization.
+Допустимые scopes соответствуют зонам ответственности проекта. Полная карта крейтов и их назначения — в [`specs/STRUCTURE.md`](specs/STRUCTURE.md).
 
-Examples of Valid Commit Messages:
+| Scope | Зона ответственности |
+|---|---|
+| `shared` | Сетевые контракты, DTO, общие структуры, xAPI-контракты. |
+| `ui` | Общая дизайн-система, атомарные компоненты, стилизация. |
+| `icons` | Иконочные ресурсы дизайн-системы. |
+| `api` | Серверный слой СУБД и LRS-аналитики. |
+| `client` | Логика внутри изоморфных контуров приложения (публичный сайт, студенческий кабинет, панель управления). |
+| `server` | Точка входа Axum, инициализация Tokio, планировщики. |
+| `cli` | Административные утилиты командной строки. |
+| `specs` | Документация в каталоге `specs/`. |
+| `ci` | CI-пайплайны и инфраструктурные конфигурации. |
 
-* feat(cpanel): add dynamic provisioning endpoint for new tenants
-* fix(student): resolve indexeddb message duplicate on offline sync reconnect
-* docs(specs): integrate commit and pull request conventions document
+### Примеры валидных сообщений
 
-------------------------------
-## Pull Request Guidelines
+- `feat(client): add dynamic provisioning endpoint for new tenants`
+- `fix(client): resolve indexeddb message duplicate on offline sync reconnect`
+- `docs(specs): integrate commit and pull request conventions document`
+- `build(workspace): bump leptos to 0.8`
 
-   1. Get started: Check specs/AGENTS.md & specs/CODING_STANDARDS.md: Ensure your implementation respects the hard rules (no unwrap(), strict tracing logs instead of println!, explicit RLS contexts).
-   2. Branch creation: Fork the repository and create your feature branch: git checkout -b feat/tenant-sso-config
-   3. Test coverage: Implement tests alongside your functionality (keep crate coverage ≥ 80%).
-   4. Local verification: Format, lint, and run tests locally via the commands listed above.
-   5. PR formatting: The Pull Request description must clearly state the essence of the changes, the impact on multi-tenant isolation, and the behavior of Offline-First IndexedDB queues.
-   6. Finish: Submit your PR with a thorough explanation of changes, describing how multitenancy and offline-first boundaries are affected.
+---
 
+## Правила оформления Pull Request
 
+1. **Подготовка.** Прочитайте [`AGENTS.md`](AGENTS.md) и [`specs/CODING_STANDARDS.md`](specs/CODING_STANDARDS.md). Убедитесь, что реализация соответствует жёстким правилам: запрет `unwrap()`, структурированное логирование через `tracing` вместо `println!`, явные RLS-контексты. Сверьтесь с [`specs/PLAN.md`](specs/PLAN.md) — к какому этапу относится задача — и с [`specs/STATUS.md`](specs/STATUS.md) — каков текущий статус готовности.
+
+2. **Создание ветки.** Форкните репозиторий и создайте feature-ветку:
+
+   ```bash
+   git checkout -b feat/tenant-sso-config
+   ```
+
+3. **Покрытие тестами.** Реализуйте тесты вместе с функциональностью. Поддерживайте покрытие крейта ≥ 80% (см. [`specs/CODING_STANDARDS.md`](specs/CODING_STANDARDS.md) §6).
+
+4. **Локальная проверка.** Прогоните форматтеры, линтеры и тесты локально — команды перечислены выше.
+
+5. **Оформление PR.** Описание Pull Request обязано чётко указывать:
+   - суть изменений;
+   - влияние на мультитенантную изоляцию (RLS, контекст тенанта);
+   - поведение офлайн-очередей IndexedDB (если применимо);
+   - к какому этапу `specs/PLAN.md` относится работа и какие критерии готовности выполнены.
+
+6. **Завершение.** Отправьте PR с развёрнутым объяснением изменений, описав, как затронуты границы мультитенантности и offline-first.
