@@ -13,6 +13,7 @@ pub mod node;
 pub mod tenant;
 pub mod user;
 pub mod assessment;
+pub mod certificate;
 
 pub use auth::{login, refresh, select_tenant};
 pub use batch::{create_batch, delete_batch, get_batch, list_batches, update_batch};
@@ -44,7 +45,7 @@ use crate::database::{
     AttemptRepository, BatchEnrollmentRepository, BatchRepository, CourseEnrollmentRepository,
     CourseRepository, NodeRepository, QuestionRepository, TenantRepository, UserRepository,
 };
-use crate::services::ProgressService;
+use crate::services::{CertificateService, ProgressService};
 
 /// Состояние приложения, общее для всех handlers.
 #[derive(Clone)]
@@ -71,6 +72,8 @@ pub struct AppState {
     pub question_repo: QuestionRepository,
     /// Репозиторий попыток прохождения тестов.
     pub attempt_repo: AttemptRepository,
+	/// Сервис для работы с сертификатами.
+    pub certificate_service: CertificateService,
 }
 
 /// Унифицированный формат ответа API.

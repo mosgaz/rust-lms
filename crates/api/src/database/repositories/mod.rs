@@ -12,6 +12,7 @@ pub mod tenant;
 pub mod user;
 pub mod question;
 pub mod attempt;
+pub mod certificate;
 
 pub use batch::{BatchRepository, BatchRepositoryError};
 pub use batch_enrollment::{BatchEnrollmentRepository, BatchEnrollmentRepositoryError};
@@ -26,3 +27,4 @@ pub use tenant::{TenantRepository, TenantRepositoryError};
 pub use user::{UserRepository, UserRepositoryError};
 pub use question::{QuestionRepository, QuestionRepositoryError};
 pub use attempt::{AttemptRepository, AttemptRepositoryError, ScoredAnswer};
+pub use certificate::{Certificate, CertificateRepository};

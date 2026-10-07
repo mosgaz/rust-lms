@@ -3033,6 +3033,7 @@ dependencies = [
 name = "rust-lms-api"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "argon2",
  "axum",
  "base64 0.22.1",
@@ -3045,6 +3046,7 @@ dependencies = [
  "sea-orm",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "thiserror 2.0.21",
  "tokio",

@@ -1,5 +1,5 @@
 // crates/api/src/http/router.rs
-//! Конфигурация Axum-роутера.
+//! Конфигурация Axum-роутера с middleware и эндпоинтами.
 
 use axum::{
     middleware,
@@ -14,7 +14,7 @@ use crate::database::{
     CourseRepository, IdentityRepository, LessonProgressRepository, NodeRepository,
     QuestionRepository, TenantRepository, UserRepository,
 };
-use crate::services::ProgressService;
+use crate::services::{CertificateService, ProgressService};
 
 use super::handlers::{self, AppState};
 use super::middleware::jwt_auth;
@@ -33,6 +33,7 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
     let lesson_progress_repo = LessonProgressRepository::new(pool.clone());
     
     let progress_service = ProgressService::new(lesson_progress_repo);
+    let certificate_service = CertificateService::new(pool.clone());
     let jwt_manager = JwtManager::new(jwt_config);
 
     let auth_service = AuthService::new(
@@ -55,6 +56,7 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
         batch_enrollment_repo,
         course_enrollment_repo,
         progress_service,
+        certificate_service,
         question_repo,
         attempt_repo,
     };
@@ -64,7 +66,11 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
         .route("/api/v1/auth/select-tenant", post(handlers::select_tenant))
         .route("/api/v1/auth/refresh", post(handlers::refresh))
         .route("/api/v1/tenants", post(handlers::create_tenant))
-        .route("/api/v1/tenants/:id", get(handlers::get_tenant));
+        .route("/api/v1/tenants/:id", get(handlers::get_tenant))
+        .route(
+            "/api/v1/certificates/verify/:hash", 
+            get(handlers::certificate::verify_public),
+        );
 
     let protected_routes = Router::new()
         .route("/api/v1/users", post(handlers::create_user))
@@ -101,22 +107,17 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
                 .patch(handlers::update_batch)
                 .delete(handlers::delete_batch),
         )
-        .route(
-            "/api/v1/batches/:id/enroll",
-            post(handlers::enroll_to_batch),
-        )
+        .route("/api/v1/batches/:id/enroll", post(handlers::enroll_to_batch))
         .route(
             "/api/v1/batches/:batch_id/enroll/:user_id",
-            delete(handlers::unenroll_from_batch).patch(handlers::update_batch_enrollment_role),
+            delete(handlers::unenroll_from_batch)
+                .patch(handlers::update_batch_enrollment_role),
         )
         .route(
             "/api/v1/batches/:id/enrollments",
             get(handlers::list_batch_enrollments),
         )
-        .route(
-            "/api/v1/courses/:id/enroll",
-            post(handlers::enroll_to_course),
-        )
+        .route("/api/v1/courses/:id/enroll", post(handlers::enroll_to_course))
         .route(
             "/api/v1/courses/:course_id/enroll/:user_id",
             delete(handlers::unenroll_from_course),
@@ -153,6 +154,10 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
         .route(
             "/api/v1/attempts/:attempt_id/nodes/:node_id/complete",
             post(handlers::complete_attempt),
+        )
+        .route(
+            "/api/v1/certificates", 
+            get(handlers::certificate::list_my_certificates),
         )
         .layer(middleware::from_fn(jwt_auth));
 
