@@ -69,7 +69,7 @@
     "id": "uuid-v4",
     "slug": "client1",
     "name": "ООО «Пример»",
-    "is_active": true
+    "status": "active"
   },
   "error": null
 }
@@ -491,7 +491,7 @@
 
 ### 4.4. Потоки и зачисления (Batches & Enrollments)
 
-Потоки (Batches) — это группы студентов, проходящих курсы вместе в определённые сроки. Поддерживаются 4 роли участников: `student`, `instructor`, `tutor`, `observer`. Индивидуальные зачисления на курсы (self-paced) реализованы через отдельную таблицу `course_enrollments`.
+Потоки (Batches) — это группы студентов, проходящие курсы вместе в определённые сроки. Поддерживаются 4 роли участников: `student`, `instructor`, `tutor`, `observer`. Индивидуальные зачисления на курсы (self-paced) реализованы через отдельную таблицу `course_enrollments`.
 
 > **См. также:** `DB_SCHEMA.md` §1.3 (описание таблиц `batches`, `batch_courses`, `batch_enrollments`, `course_enrollments`).
 
@@ -624,7 +624,7 @@
   "score": 0.85,                // опционально: 0.0–1.0 (для тестов)
   "time_spent_seconds": 1200,   // опционально
   "last_position": 300,         // опционально: позиция в медиа (секунды)
-  "client_modified_at": "2026-10-07T10:00:00Z"  // опционально, для PWA-sync (Этап 11)
+  "client_modified_at": "2026-10-07T10:00:00Z"  // опционально, для PWA-sync
 }
 ```
 
@@ -648,10 +648,11 @@
     },
     "course_progress": 0.75,
     "course_status": "in_progress",
-    "completion_triggered": false
+    "completion_triggered": true
   }
 }
 ```
+> **Примечание:** Если `completion_triggered: true`, сервер автоматически инициирует выдачу сертификата (Этап 11). Ошибки генерации сертификата или отправки email логируются, но не прерывают успешный ответ прогресса (graceful degradation).
 
 **Ошибки:**
 - `403 Forbidden` — пользователь не зачислен в курс (`NotEnrolled`).
@@ -939,6 +940,60 @@
 - **Назначение:** Получение истории всех попыток пользователя по конкретному курсу, отсортированных по дате начала (новые первыми).
 - **Response (200 OK):** Массив объектов `Attempt`.
 
+### 4.7. Сертификация (Certification Engine)
+
+Эндпоинты для управления цифровыми сертификатами, их верификации и скачивания. Сертификаты выдаются автоматически при завершении курса (триггер из `POST /api/v1/progress`). PDF генерируется "на лету" (on-demand), не сохраняясь в БД или файловой системе (stateless архитектура).
+
+> **См. также:** `DB_SCHEMA.md` §1.3 (таблица `certificates`).
+
+#### `GET /api/v1/certificates`
+- **Уровень доступа:** Локальный токен тенанта (студент).
+- **Назначение:** Получение списка всех сертификатов, выданных текущему пользователю в рамках текущего тенанта.
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid-v4",
+      "target_type": "course",
+      "target_id": "uuid-course",
+      "verification_hash": "a1b2c3d4e5f6...",
+      "issued_at": "2026-10-07T10:05:00Z"
+    }
+  ],
+  "error": null
+}
+```
+
+#### `GET /api/v1/certificates/verify/:hash`
+- **Уровень доступа:** **Публичный** (аутентификация не требуется).
+- **Назначение:** Проверка подлинности сертификата внешними системами (работодатели, HR) по уникальному хешу.
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid-v4",
+    "target_type": "course",
+    "target_id": "uuid-course",
+    "verification_hash": "a1b2c3d4e5f6...",
+    "issued_at": "2026-10-07T10:05:00Z"
+  },
+  "error": null
+}
+```
+- **Ошибки:** `404 Not Found` (сертификат с таким хешем не найден или был отозван).
+
+#### `GET /api/v1/certificates/:id/download`
+- **Уровень доступа:** Локальный токен тенанта (владелец сертификата или администратор).
+- **Назначение:** Скачивание PDF-файла сертификата. PDF генерируется динамически из метаданных при каждом запросе.
+- **Response (200 OK):**
+  - `Content-Type: application/pdf`
+  - `Content-Disposition: attachment; filename="certificate_<hash>.pdf"`
+  - Body: бинарные данные PDF-файла.
+- **Ошибки:** `404 Not Found` (сертификат не найден или не принадлежит пользователю), `500 Internal Server Error` (ошибка генерации PDF).
+
 ---
 
 ## 5. Feature Flags
@@ -1029,7 +1084,7 @@
 ## 9. Связь с другими спецификациями
 
 - `NFR.md` — лимиты, latency budgets, пропускная способность.
-- `DB_SCHEMA.md` — структура таблиц (Identity-First), RLS-политики, схемы Assessments Engine.
+- `DB_SCHEMA.md` — структура таблиц (Identity-First), RLS-политики, схемы Assessments и Certification Engine.
 - `OFFLINE_SYNC.md` — клиентская логика синхронизации.
 - `FEATURE_FLAGS.md` — управление функциональными флагами.
 - `LICENSING.md` — офлайн-лицензирование для коробочных поставок.
