@@ -56,6 +56,9 @@ sha2 = { workspace = true }
 printpdf = "0.7"
 qrcode = "0.14"
 
+# SMTP / Email
+lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "builder", "smtp-transport"] }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 http-body-util = "0.1"

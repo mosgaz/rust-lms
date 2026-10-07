@@ -57,6 +57,23 @@ impl Default for DatabaseConfig {
     }
 }
 
+/// Конфигурация SMTP-сервера для отправки уведомлений.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SmtpConfig {
+    /// Адрес SMTP-сервера (например, `smtp.gmail.com`).
+    pub host: String,
+    /// Порт SMTP-сервера (обычно 587 для STARTTLS или 465 для TLS).
+    pub port: u16,
+    /// Имя пользователя для аутентификации на SMTP-сервере.
+    pub username: String,
+    /// Пароль или App Password для аутентификации.
+    pub password: String,
+    /// Адрес отправителя (From), отображаемый в письмах.
+    pub from_address: String,
+    /// Имя отправителя, отображаемое в письмах.
+    pub from_name: String,
+}
+
 /// Корневая конфигурация приложения.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {
@@ -64,6 +81,8 @@ pub struct AppConfig {
     pub server: ServerConfig,
     /// Конфигурация базы данных.
     pub database: DatabaseConfig,
+	/// Конфигурация SMTP для отправки уведомлений.
+    pub smtp: SmtpConfig,
 }
 
 impl AppConfig {

@@ -14,7 +14,8 @@ use crate::database::{
     CourseRepository, IdentityRepository, LessonProgressRepository, NodeRepository,
     QuestionRepository, TenantRepository, UserRepository,
 };
-use crate::services::{CertificateService, ProgressService};
+
+use crate::services::{CertificateService, EmailService, ProgressService, SmtpSettings};
 
 use super::handlers::{self, AppState};
 use super::middleware::jwt_auth;
@@ -33,7 +34,27 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
     let lesson_progress_repo = LessonProgressRepository::new(pool.clone());
     
     let progress_service = ProgressService::new(lesson_progress_repo);
-    let certificate_service = CertificateService::new(pool.clone());
+    	
+	// Инициализация email-сервиса (None, если SMTP не настроен)
+	let email_service = std::env::var("RUST_LMS_SMTP_HOST").ok().map(|host| {
+		let settings = SmtpSettings {
+			host,
+			port: std::env::var("RUST_LMS_SMTP_PORT")
+				.ok()
+				.and_then(|p| p.parse().ok())
+				.unwrap_or(587),
+			username: std::env::var("RUST_LMS_SMTP_USERNAME").unwrap_or_default(),
+			password: std::env::var("RUST_LMS_SMTP_PASSWORD").unwrap_or_default(),
+			from_address: std::env::var("RUST_LMS_SMTP_FROM_ADDRESS")
+				.unwrap_or_else(|_| "noreply@lms.example.com".to_string()),
+			from_name: std::env::var("RUST_LMS_SMTP_FROM_NAME")
+				.unwrap_or_else(|_| "rust-lms".to_string()),
+		};
+		EmailService::new(settings).expect("failed to initialize SMTP transport")
+	});
+
+	let certificate_service = CertificateService::new(pool.clone(), email_service);
+
     let jwt_manager = JwtManager::new(jwt_config);
 
     let auth_service = AuthService::new(
