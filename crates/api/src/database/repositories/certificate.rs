@@ -104,6 +104,26 @@ impl CertificateRepository {
         .fetch_all(&self.pool)
         .await?)
     }
+
+	/// Находит сертификат по его идентификатору в рамках текущего тенанта.
+    pub async fn find_by_id(
+        &self,
+        ctx: &RlsContext,
+        certificate_id: Uuid,
+    ) -> Result<Option<Certificate>> {
+        Ok(sqlx::query_as::<_, Certificate>(
+            r#"
+            SELECT id, tenant_id, user_id, target_type, target_id, verification_hash, issued_at
+            FROM certificates
+            WHERE id = $1 AND tenant_id = $2
+            "#
+        )
+        .bind(certificate_id)
+        .bind(ctx.tenant_id())
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+	
 }
 
 /// Генерирует криптографически стойкий хэш для верификации сертификата.

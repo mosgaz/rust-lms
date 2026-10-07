@@ -10,7 +10,7 @@ use axum::{
 use rust_lms_shared::{CourseId, ProgressResponse, ProgressUpdateRequest, TenantId, UserId};
 use serde::Deserialize;
 
-use crate::database::LessonProgressRepositoryError;
+use crate::database::{LessonProgressRepositoryError, RlsContext}; // <-- ДОБАВЛЕНО: RlsContext
 
 use super::{ApiResponse, AppState};
 
@@ -56,16 +56,48 @@ pub async fn update_lesson_progress(
         )
         .await
     {
-        Ok(result) => (
-            StatusCode::OK,
-            Json(ApiResponse::ok(ProgressResponse {
-                lesson_progress: result.lesson_progress,
-                course_progress: result.course_progress,
-                course_status: result.course_status,
-                completion_triggered: result.completion_triggered,
-            })),
-        )
-            .into_response(),
+        Ok(result) => {
+            // =================================================================
+            // === ЭТАП 11.5: Автоматическая выдача сертификата при завершении курса ===
+            // =================================================================
+            if result.completion_triggered {
+                // ИСПРАВЛЕНО: RlsContext::new принимает только tenant_id
+                let ctx = RlsContext::new(tenant_id);
+                let course_uuid = result.course_id.0;
+
+                tracing::info!(
+                    user_id = %user_id,
+                    course_id = %course_uuid,
+                    "Course completed, triggering automatic certificate issuance"
+                );
+
+                // Graceful degradation: ошибки логируются, но не прерывают прогресс
+                if let Err(e) = state
+                    .certificate_service
+                    .issue_course_certificate(&ctx, user_id.0, course_uuid)
+                    .await
+                {
+                    tracing::error!(
+                        error = %e,
+                        user_id = %user_id,
+                        course_id = %course_uuid,
+                        "Failed to issue certificate after course completion"
+                    );
+                }
+            }
+            // =================================================================
+
+            (
+                StatusCode::OK,
+                Json(ApiResponse::ok(ProgressResponse {
+                    lesson_progress: result.lesson_progress,
+                    course_progress: result.course_progress,
+                    course_status: result.course_status,
+                    completion_triggered: result.completion_triggered,
+                })),
+            )
+                .into_response()
+        }
         Err(e) => map_error_to_response(e),
     }
 }

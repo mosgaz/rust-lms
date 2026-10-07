@@ -151,7 +151,6 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
             "/api/v1/users/:id/enrollments",
             get(handlers::list_user_course_enrollments),
         )
-        // === Этап 10: Assessments Engine ===
         .route(
             "/api/v1/courses/:course_id/questions",
             get(handlers::list_questions).post(handlers::create_question),
@@ -180,6 +179,10 @@ pub fn create_router(pool: PgPool, jwt_config: JwtConfig) -> Router {
             "/api/v1/certificates", 
             get(handlers::certificate::list_my_certificates),
         )
+		.route(
+			"/api/v1/certificates/:id/download",
+			get(handlers::certificate::download_certificate_pdf),
+		)
         .layer(middleware::from_fn(jwt_auth));
 
     Router::new()

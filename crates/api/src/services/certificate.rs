@@ -223,4 +223,49 @@ impl CertificateService {
     ) -> Result<Vec<Certificate>> {
         self.repo.list_by_user(ctx, user_id).await
     }
+
+	/// Получает сертификат с данными пользователя и курса для генерации PDF.
+    ///
+    /// # Arguments
+    /// * `ctx` - Контекст тенанта.
+    /// * `certificate_id` - Идентификатор сертификата.
+    ///
+    /// # Returns
+    /// Кортеж (сертификат, имя пользователя, название курса) или ошибку.
+    pub async fn get_certificate_with_details(
+        &self,
+        ctx: &RlsContext,
+        certificate_id: Uuid,
+    ) -> Result<(Certificate, String, String)> {
+        let cert = self
+            .repo
+            .find_by_id(ctx, certificate_id)
+            .await?
+            .context("Сертификат не найден")?;
+
+        let tenant_id = ctx.tenant_id();
+        let uid = UserId(cert.user_id);
+        let cid = CourseId(cert.target_id);
+
+        let user = self
+            .user_repo
+            .find_by_id(tenant_id, uid)
+            .await
+            .context("Не удалось найти пользователя")?;
+
+        let identity = self
+            .identity_repo
+            .find_by_id(user.identity_id)
+            .await
+            .context("Не удалось найти identity")?;
+
+        let course = self
+            .course_repo
+            .find_by_id(tenant_id, cid)
+            .await
+            .context("Не удалось найти курс")?;
+
+        Ok((cert, identity.email.clone(), course.title))
+    }
+	
 }
