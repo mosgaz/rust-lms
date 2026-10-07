@@ -4,7 +4,7 @@
 
 > Этот файл динамически обновляется AI-агентами после завершения каждого таска. Изменение статусов дублируется записью в `CHANGELOG.md`.
 
-**Текущий этап проекта:** активная реализация серверного ядра (`api` + `server`). Базовый HTTP-цикл (DTO → БД → REST → Axum-хост) замкнут. **Внедрена Identity-First архитектура** (ADR 2026.10.05-0011): глобальная личность (`identities`) + роли в тенантах (`users`), двухшаговая аутентификация с авто-выбором `preferred_tenant_id`. **Завершён Этап 9: Progress Tracking & Completion** — прогресс уроков, критерии завершения курса (4 типа правил, AllOf/AnyOf), сервис `ProgressService`, 5 HTTP-эндпоинтов, 18 интеграционных тестов.
+**Текущий этап проекта:** активная реализация серверного ядра (`api` + `server`). Базовый HTTP-цикл (DTO → БД → REST → Axum-хост) замкнут. **Внедрена Identity-First архитектура** (ADR 2026.10.05-0011): глобальная личность (`identities`) + роли в тенантах (`users`), двухшаговая аутентификация с авто-выбором `preferred_tenant_id`. **Завершён Этап 9: Progress Tracking & Completion** — прогресс уроков, критерии завершения курса (4 типа правил, AllOf/AnyOf), сервис `ProgressService`, 5 HTTP-эндпоинтов, 18 интеграционных тестов. **Завершён Этап 10: Assessments Engine** — модели вопросов/попыток/ответов, RLS, репозитории (включая пакетное сохранение ответов), `ScoringEngine`, 7 HTTP-эндпоинтов, автоматическая интеграция с прогрессом при сдаче, 6 интеграционных тестов.
 **Кодовая база:** активная разработка.
 
 ---
@@ -55,16 +55,17 @@
 | `specs/AGENTS.md` | 🟢 | — | Инструкции для AI-агентов. |
 | `specs/decisions/README.md` | 🟢 | — | Реестр ADR, точка входа. |
 | `specs/decisions/2026.09.28-0001.md` | 🟢 | — | ADR: RLS вместо схем-per-tenant. |
-| `specs/decisions/2026.09.28-0002.md` | 🟢 | — | ADR: иммутабельный xAPI в LRS. |
+| `specs/decisions/2026.09.28-0002.md` | 🟢 | — | ADR: Иммутабельный xAPI в LRS. |
 | `specs/decisions/2026.09.29-0003.md` | 🟢 | — | ADR: подпись и kill switch для WASM-плагинов. |
 | `specs/decisions/2026.09.29-0004.md` | 🟢 | — | ADR: Application-Level Encryption. |
 | `specs/decisions/2026.09.29-0005.md` | 🟢 | — | ADR: Data Residency. |
-| `specs/decisions/2026.09.29-0006.md` | 🟢 | — | ADR: выбор OTel backend для SaaS. |
+| `specs/decisions/2026.09.29-0006.md` | 🟢 | — | ADR: Выбор OTel backend для SaaS. |
 | `specs/decisions/2026.09.29-0007.md` | 🟢 | — | ADR: операционный регламент deprecation API. |
-| `specs/decisions/2026.09.29-0008.md` | 🟢 | — | ADR: формат и enforcement лицензионного ключа. |
-| `specs/decisions/2026.09.29-0009.md` | 🟢 | — | ADR: архитектура Feature Flags. |
+| `specs/decisions/2026.09.29-0008.md` | 🟢 | — | ADR: Формат и enforcement лицензионного ключа. |
+| `specs/decisions/2026.09.29-0009.md` | 🟢 | — | ADR: Архитектура Feature Flags. |
 | `specs/decisions/2026.09.29-0010.md` | 🟢 | — | ADR: Supply Chain Security для WASM-плагинов. |
 | `specs/decisions/2026.10.05-0011.md` | 🟢 | — | ADR: Identity-First архитектура (разделение личности и роли в тенанте). |
+| `specs/decisions/2026.10.05-0012.md` | 🟢 | — | ADR: Выбор СУБД для слоя LRS (Аналитика xAPI). |
 | `CONTRIBUTING.md` | 🟢 | — | Коммиты, ветвление, Conventional Commits. |
 | `CHANGELOG.md` | 🟢 | — | Журнал изменений. |
 
@@ -94,6 +95,12 @@
 | **Иерархия контента (Courses + Nodes с ltree)** | Реализация | 🟢 | `shared` / `api` | Модели `Course`, `Node`, `NodeId`, `NodeType` в `shared`. `CourseRepository` (CRUD + publish_version). `NodeRepository` (CRUD + ltree-запросы: find_subtree, find_course_tree, move_node). Миграция `20261006000001_create_content_hierarchy.sql` (таблицы `courses`, `nodes`, расширение ltree, GiST/GIN индексы). HTTP handlers: 14 эндпоинтов для курсов и узлов. Интеграционные тесты написаны, ожидают запуска с PostgreSQL. |
 | **Потоки и зачисления (Batches & Enrollments)** | Реализация | 🟢 | `shared` / `api` | Модели `Batch`, `BatchEnrollment`, `CourseEnrollment` (с полем `completed_lessons_weight` для O(1)-пересчёта прогресса), `BatchRole`, `BatchStatus`, `EnrollmentStatus`. Репозитории `BatchRepository`, `BatchEnrollmentRepository`, `CourseEnrollmentRepository`. Миграция `20261007000001_create_batches_and_enrollments.sql`. HTTP handlers: 12 эндпоинтов. Интеграционные тесты написаны, ожидают запуска с PostgreSQL. |
 | **Прогресс обучения (Lesson Progress & Completion)** | Реализация | 🟢 | `shared` / `api` | Модели `LessonProgress`, `CompletionCriteria`, `ProgressUpdatedEvent` в `shared`. `LessonProgressRepository` (upsert, инкрементальный пересчёт, проверка 4 типов критериев, AllOf/AnyOf). `ProgressService` — сервисный слой с генерацией событий. Миграции `20261008000001_create_lesson_progress.sql` и `20261009000001_add_total_weight_to_courses.sql`. HTTP handlers: 5 эндпоинтов. 18 интеграционных тестов (RLS, критерии, идемпотентность, 403/404/409/410). |
+| **Assessments Engine: Модели и миграции** | Реализация | 🟢 | `shared` / `api` | Таблицы `questions`, `attempts`, `answers` с RLS, индексами и CHECK-констрейнтами. Миграция `20261010000001_create_assessments.sql`. |
+| **Assessments Engine: Репозитории** | Реализация | 🟢 | `api` | `QuestionRepository` (CRUD), `AttemptRepository` (создание, пакетное `save_answers`, `complete`, `get_answers_for_attempt`, история). Структура `ScoredAnswer`. |
+| **Assessments Engine: ScoringEngine** | Реализация | 🟢 | `api` | Логика проверки `MultipleChoice`, `TrueFalse`, `ShortAnswer`, `LongAnswer`. Подсчёт суммарного балла (0.0–1.0) и определение сдачи по порогу. |
+| **Assessments Engine: REST API** | Реализация | 🟢 | `api` | 7 эндпоинтов: создание/список вопросов, старт попытки, инкрементальное сохранение ответа, завершение попытки, детали попытки, история попыток. |
+| **Assessments Engine: Интеграция с прогрессом** | Реализация | 🟢 | `api` | Автоматический вызов `ProgressService::update_lesson_progress` со статусом `Completed` при успешной сдаче теста (score >= 0.7). |
+| **Assessments Engine: Интеграционные тесты** | Реализация | 🟢 | `api` | Файл `crates/api/tests/assessment_flow.rs`: 6 тестов (разные типы вопросов, полный цикл, частичный ответ, лимит попыток, прогресс, история). |
 | **Репозитории иерархии (CourseRepository + NodeRepository)** | Реализация | 🟢 | `api` | `CourseRepository`: create, find_by_id, find_by_tenant, update, delete, publish_version. `NodeRepository`: create (с автогенерацией ltree path), find_by_id, find_children, find_subtree (ltree <@), find_course_tree, update, move_node (пересчёт path поддерева), delete (каскадно), reorder. Unit-тесты проходят. |
 | **Content Versioning & Cohort Pinning** | Реализация | 🔴 | `api` | `version`, `course_versions`, `batches.content_version`. |
 | **Движок LRS (Аналитика xAPI)** | Реализация | 🔴 | `api` | Инвариантный слой TimescaleDB/ClickHouse. ADR: `2026.09.28-0002.md`. |
