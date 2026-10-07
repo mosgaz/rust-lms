@@ -33,27 +33,30 @@ CREATE POLICY tenant_isolation_policy ON <table_name>
 CREATE TABLE identities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL, -- Хэш Argon2id в формате PHC string
+    password_hash TEXT NOT NULL, -- Хэш Argon2id в формате PHC string
     preferred_tenant_id UUID,            -- Направление на дефолтный тенант
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE tenants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    custom_domain VARCHAR(255) UNIQUE,
+    default_locale VARCHAR(16) DEFAULT 'ru',
+    sso_config JSONB,
+    branding_config JSONB,
+    status VARCHAR(32) CHECK (status IN ('active', 'suspended', 'archived')) DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
-
-> **Примечание.** В §1.3 ниже `password_hash` описан как `TEXT` (для PHC-строк произвольной длины), а `tenants` содержит расширенный набор полей (`custom_domain`, `default_locale`, `sso_config`, `branding_config`, `status`, `updated_at`). DDL-фрагменты здесь — минимальный скелет; источник истины — полевая спецификация §1.3.
 
 ### 1.3. Реляционные сущности и декларативные связи
 
 #### Глобальная таблица: tenants (Изолирована от RLS)
-
 Предназначена для регистрации организаций в системе и хранения их метаданных.
-
-* `id`: UUID (Primary Key, генерируется автоматически через системную функцию `gen_random_uuid()`).
+* `id`: UUID (Primary Key, `gen_random_uuid()`).
 * `custom_domain`: VARCHAR(255) (Уникальный внешний веб-адрес тенанта, NULLable).
 * `default_locale`: VARCHAR(16) (BCP-47: `'en'`, `'ru'`, `'ar'` и т.д. Основной язык интерфейса и метаданных тенанта).
 * `sso_config`: JSONB (Декларативная конфигурация Identity Provider: OIDC Client ID, OIDC Client Secret, SAML Metadata URL, LDAP Search Base, TLS-сертификаты).
@@ -62,23 +65,19 @@ CREATE TABLE tenants (
 * `created_at` / `updated_at`: TIMESTAMPTZ.
 
 #### Глобальная таблица: identities (Изолирована от RLS)
-
 Предназначена для хранения глобальных учетных данных личности. Одна личность (один email) может иметь доступ к нескольким тенантам. Архитектура Identity-First (см. ADR [`2026.10.05-0011.md`](decisions/2026.10.05-0011.md)).
-
 * `id`: UUID (Primary Key, `gen_random_uuid()`).
-* `email`: VARCHAR(255) (Уникальный, `UNIQUE NOT NULL`). Адрес электронной почты, используемый для входа в систему.
+* `email`: VARCHAR(255) (Уникальный, `UNIQUE NOT NULL`).
 * `password_hash`: TEXT (Хэш пароля в формате PHC string, например `$argon2id$...`, см. RFC 9106).
-* `preferred_tenant_id`: UUID (FK -> tenants.id ON DELETE SET NULL, NULLable). Используется для автоматического выбора тенанта при успешной аутентификации, если тенант активен.
+* `preferred_tenant_id`: UUID (FK -> tenants.id ON DELETE SET NULL, NULLable).
 * `created_at` / `updated_at`: TIMESTAMPTZ.
 * **Ограничения:** `CHECK (char_length(email) BETWEEN 3 AND 255)`, `CHECK (char_length(password_hash) BETWEEN 10 AND 1024)`.
-* **Индексы:** `idx_identities_email` (для быстрого поиска при логине), `idx_identities_preferred_tenant_id`.
+* **Индексы:** `idx_identities_email`, `idx_identities_preferred_tenant_id`.
 
 > **Примечание:** Эта таблица не защищена RLS, так как проверка пароля происходит до определения контекста тенанта. Доступ к ней имеет только слой аутентификации.
 
 #### Глобальная таблица: tenant_api_keys (Изолирована от RLS)
-
 Служит для валидации внешних систем, обращающихся к Open API тенанта.
-
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
 * `key_hash`: VARCHAR(64) (Хэш непрозрачного токена по алгоритму SHA-256).
@@ -88,37 +87,29 @@ CREATE TABLE tenants (
 * **Ограничения:** Уникальный индекс `UNIQUE (key_hash)`.
 
 #### Глобальная таблица: feature_flags (Изолирована от RLS)
-
-Глобальные функциональные флаги платформы. Определяют значение по умолчанию для всех тенантов и признак делегируемости.
-
+Глобальные функциональные флаги платформы.
 * `id`: UUID (Primary Key).
 * `name`: VARCHAR(64) (UNIQUE. Строковый идентификатор: `'vks'`, `'scim'`, `'ale'`, `'conformance_testing'`, …).
-* `description`: TEXT (Человекочитаемое описание для админ-панели).
-* `enabled`: BOOLEAN (NOT NULL, DEFAULT FALSE). Значение по умолчанию для всех тенантов.
-* `is_delegatable`: BOOLEAN (NOT NULL, DEFAULT FALSE). Может ли тенант-админ переключать флаг для своего тенанта.
+* `description`: TEXT.
+* `enabled`: BOOLEAN (NOT NULL, DEFAULT FALSE).
+* `is_delegatable`: BOOLEAN (NOT NULL, DEFAULT FALSE).
 * `created_at` / `updated_at`: TIMESTAMPTZ.
 * **Ограничения:** Уникальный индекс `UNIQUE (name)`.
 
 #### Таблица: tenant_feature_flags (Защищена RLS)
-
-Тенантные переопределения функциональных флагов. Если для пары `(tenant_id, flag_name)` записи нет — применяется значение `enabled` из глобальной таблицы `feature_flags`.
-
+Тенантные переопределения функциональных флагов.
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
 * `flag_name`: VARCHAR(64) (FK -> feature_flags.name ON DELETE CASCADE).
-* `enabled`: BOOLEAN (NOT NULL). Значение override.
-* `updated_by`: UUID (FK -> users.id ON DELETE SET NULL, NULLable). Кто изменил (через UI/API) или NULL при изменении через CLI супер-админом.
+* `enabled`: BOOLEAN (NOT NULL).
+* `updated_by`: UUID (FK -> users.id ON DELETE SET NULL, NULLable).
 * `updated_at`: TIMESTAMPTZ.
 * **Ограничения:** Уникальный индекс `UNIQUE (tenant_id, flag_name)`.
 
-> Механизм использования — в [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md) §3. Архитектурное решение — в ADR [`2026.09.29-0009.md`](decisions/2026.09.29-0009.md). Связь с лицензированием — в [`LICENSING.md`](LICENSING.md).
-
 #### Глобальная таблица: license (Изолирована от RLS)
-
-Единственная запись (single-row). Хранит текущую лицензию платформы и результат последней валидации.
-
+Единственная запись (single-row). Хранит текущую лицензию платформы.
 * `id`: UUID (Primary Key).
-* `license_id`: VARCHAR(64) (UNIQUE). Идентификатор из payload лицензии.
+* `license_id`: VARCHAR(64) (UNIQUE).
 * `customer_name`: VARCHAR(255).
 * `issued_at` / `expires_at`: TIMESTAMPTZ.
 * `grace_period_days`: INTEGER.
@@ -126,74 +117,57 @@ CREATE TABLE tenants (
 * `hardware_id`: VARCHAR(128) (NULLable).
 * `domain_fqdn`: VARCHAR(255) (NULLable).
 * `limits`: JSONB.
-* `features`: JSONB (коммерческие права: `{"ale": true, "scim": true, "drm": false, ...}`).
-* `raw_payload`: JSONB (полный payload для аудита).
+* `features`: JSONB.
+* `raw_payload`: JSONB.
 * `signature_verified`: BOOLEAN.
 * `last_validated_at`: TIMESTAMPTZ.
 * `status`: VARCHAR(32) (CHECK: `'active'`, `'grace'`, `'expired'`, `'hard_limited'`, `'invalid'`).
 * `created_at` / `updated_at`: TIMESTAMPTZ.
 
-> Механизм лицензирования — в [`LICENSING.md`](LICENSING.md). Архитектурное решение — в ADR [`2026.09.29-0008.md`](decisions/2026.09.29-0008.md).
-
 #### Глобальная таблица: revoked_jwt_kids (Изолирована от RLS)
-
-Список отозванных идентификаторов ключей подписи JWT. Используется API-шлюзом для немедленного отклонения токенов, подписанных скомпрометированным ключом.
-
-* `kid`: VARCHAR(64) (Primary Key). Идентификатор ключа из header JWT.
-* `reason`: VARCHAR(255) (Причина отзыва: `'compromised'`, `'rotated'`, `'end_of_life'`).
+Список отозванных идентификаторов ключей подписи JWT.
+* `kid`: VARCHAR(64) (Primary Key).
+* `reason`: VARCHAR(255).
 * `revoked_by`: UUID (FK -> users.id, NULLable).
 * `revoked_at`: TIMESTAMPTZ.
-* `expires_at`: TIMESTAMPTZ (TTL равен максимальному времени жизни JWT; после истечения запись может быть удалена).
-
-> Правила и runbook — в [`DEPLOY.md`](DEPLOY.md) §4.5 «Инцидент: компрометация ключей подписи JWT».
+* `expires_at`: TIMESTAMPTZ.
 
 #### Таблица: retention_policies (Защищена RLS)
-
-Политики жизненного цикла данных (ILM) на уровне тенанта. Определяют сроки хранения и действия по истечении для каждого класса данных.
-
+Политики жизненного цикла данных (ILM) на уровне тенанта.
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
-* `data_class`: VARCHAR(64) (Ограничение CHECK: `'xapi_statements'`, `'audit_log'`, `'chat_messages'`, `'etl_logs'`, `'certificates'`).
-* `retention_days`: INTEGER (NOT NULL, > 0). 0 запрещено; для «хранить бессрочно» использовать `NULL` в сочетании с `action = 'keep'`.
-* `action`: VARCHAR(32) (Ограничение CHECK: `'archive'`, `'anonymize'`, `'delete'`, `'keep'`).
+* `data_class`: VARCHAR(64) (CHECK: `'xapi_statements'`, `'audit_log'`, `'chat_messages'`, `'etl_logs'`, `'certificates'`).
+* `retention_days`: INTEGER (NOT NULL, > 0).
+* `action`: VARCHAR(32) (CHECK: `'archive'`, `'anonymize'`, `'delete'`, `'keep'`).
 * `enabled`: BOOLEAN (NOT NULL, DEFAULT TRUE).
 * `created_at` / `updated_at`: TIMESTAMPTZ.
 * **Ограничения:** Уникальный индекс `UNIQUE (tenant_id, data_class)`.
 
 #### Таблица: users (Защищена RLS)
-
-Регистрирует связь личности (`identity`) с конкретным цифровым контуром организации (`tenant`). Одна личность может иметь несколько записей `users` в разных тенантах (например, как сотрудник в одном и как внешний эксперт в другом). Архитектура Identity-First (см. ADR [`2026.10.05-0011.md`](decisions/2026.10.05-0011.md)).
-
+Регистрирует связь личности (`identity`) с конкретным цифровым контуром организации (`tenant`).
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
-* `identity_id`: UUID (FK -> identities.id ON DELETE CASCADE). Ссылка на глобальную личность.
-* `role`: VARCHAR(50) (NOT NULL). Роль личности в тенанте: `'student'`, `'teacher'`, `'admin'`, `'mentor'`, `'observer'`. Полная матрица ролей — в [`RBAC.md`](RBAC.md).
-* `is_active`: BOOLEAN (NOT NULL, DEFAULT TRUE). Позволяет деактивировать доступ личности к конкретному тенанту без удаления глобальной учетной записи.
+* `identity_id`: UUID (FK -> identities.id ON DELETE CASCADE).
+* `role`: VARCHAR(50) (NOT NULL). Роль личности в тенанте: `'student'`, `'teacher'`, `'admin'`, `'mentor'`, `'observer'`.
+* `is_active`: BOOLEAN (NOT NULL, DEFAULT TRUE).
 * `created_at` / `updated_at`: TIMESTAMPTZ.
-* **Ограничения:** Составной уникальный индекс `UNIQUE (tenant_id, identity_id)` (одна личность может быть добавлена в тенант только один раз).
-* **Индексы:** `idx_users_tenant_id`, `idx_users_identity_id` (для быстрого поиска всех тенантов личности).
-* **RLS Политика:** `user_tenant_isolation_policy` (фильтрация по `tenant_id = current_setting('app.current_tenant_id', true)`).
-
-> **Примечание:** В Identity-First архитектуре таблица `users` представляет роль личности в конкретном тенанте, а не саму личность. Глобальные данные (email, password_hash, preferred_tenant_id) хранятся в таблице `identities` (без RLS).
+* **Ограничения:** Составной уникальный индекс `UNIQUE (tenant_id, identity_id)`.
+* **Индексы:** `idx_users_tenant_id`, `idx_users_identity_id`.
 
 #### Таблица: programs (Защищена RLS)
-
 Агрегирует долгосрочные образовательные треки тенанта.
-
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
-* `title`: VARCHAR(255) (Основной язык тенанта; денормализовано для поиска и индексов).
-* `title_i18n`: JSONB (NULLable. Ключ — BCP-47: `{"ru": "…", "en": "…"}`).
+* `title`: VARCHAR(255).
+* `title_i18n`: JSONB (NULLable).
 * `description`: TEXT.
 * `description_i18n`: JSONB (NULLable).
-* `version`: INTEGER (NOT NULL, DEFAULT 1). Монотонно растёт при публикации новой версии.
-* `certification_rules`: JSONB (Правила автоматического триггера выпуска сертификатов при закрытии всех дочерних элементов программы).
+* `version`: INTEGER (NOT NULL, DEFAULT 1).
+* `certification_rules`: JSONB.
 * `created_at` / `updated_at`: TIMESTAMPTZ.
 
 #### Таблица: courses (Защищена RLS)
-
-Самостоятельные учебные курсы, входящие в программы или назначаемые обособленно.
-
+Самостоятельные учебные курсы.
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
 * `program_id`: UUID (FK -> programs.id ON DELETE SET NULL, NULLable).
@@ -201,127 +175,109 @@ CREATE TABLE tenants (
 * `title_i18n`: JSONB (NULLable).
 * `description`: TEXT.
 * `description_i18n`: JSONB (NULLable).
-* `version`: INTEGER (NOT NULL, DEFAULT 1). Текущая версия структуры курса.
-* `course_tree`: JSONB (Иерархическая структура курса: декларативное дерево разделов, Юнитов, текстовых блоков и ссылок на Plugin ID).
+* `version`: INTEGER (NOT NULL, DEFAULT 1).
 * `created_at` / `updated_at`: TIMESTAMPTZ.
 
 #### Таблица: course_versions (Защищена RLS)
-
-Снапшоты версий курса. Позволяют откатывать структуру и сохранять историю изменений для аудита. Используется механизмом «заморозки версии контента для конкретной когорты».
-
+Снапшоты версий курса.
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
 * `course_id`: UUID (FK -> courses.id ON DELETE CASCADE).
-* `version`: INTEGER (NOT NULL). Номер версии, соответствующий `courses.version`.
+* `version`: INTEGER (NOT NULL).
 * `course_tree`: JSONB (Снапшот структуры на момент публикации версии).
 * `published_at`: TIMESTAMPTZ.
-* `published_by`: UUID (FK -> users.id, NULLable). Ссылка на `users.id` (роль личности в тенанте, который опубликовал версию).
+* `published_by`: UUID (FK -> users.id, NULLable).
 * **Ограничения:** Уникальный индекс `UNIQUE (tenant_id, course_id, version)`.
 
 #### Таблица: batches (Защищена RLS)
-
-Организационные потоки студентов, проходящие обучение по фиксированному календарному графику.
-
+Организационные потоки студентов.
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
 * `course_id`: UUID (FK -> courses.id ON DELETE CASCADE).
-* `content_version`: INTEGER (NOT NULL). Версия курса, зафиксированная на момент старта когорты. Студенты этой когорты проходят именно эту версию, даже если курс обновлён.
-* `title`: VARCHAR(128) (Название когорты / потока обучения).
-* `timeline_config`: JSONB (Календарная сетка: жесткие даты автоматического открытия конкретных Юнитов, дедлайны Quizzes и временные слоты вебинаров).
+* `content_version`: INTEGER (NOT NULL).
+* `title`: VARCHAR(128).
+* `timeline_config`: JSONB.
 * `created_at` / `updated_at`: TIMESTAMPTZ.
-* **Ограничения:** Внешний ключ `content_version` ссылается на `course_versions.version` для того же `course_id` (проверка на уровне приложения + опционально composite FK).
 
 #### Таблица: batch_enrollments (Защищена RLS)
-
-Таблица связей для зачисления пользователей в конкретные потоки обучения.
-
+Зачисление пользователей в конкретные потоки обучения.
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
 * `batch_id`: UUID (FK -> batches.id ON DELETE CASCADE).
-* `user_id`: UUID (FK -> users.id ON DELETE CASCADE). Ссылка на `users.id` (роль личности в тенанте, зачисленного в поток).
-* `status`: VARCHAR(32) (Ограничение CHECK: `'active'`, `'completed'`, `'dropped'`).
+* `user_id`: UUID (FK -> users.id ON DELETE CASCADE).
+* `status`: VARCHAR(32) (CHECK: `'active'`, `'completed'`, `'dropped'`).
 * `enrolled_at`: TIMESTAMPTZ.
 * **Ограничения:** Составной уникальный индекс `UNIQUE (tenant_id, batch_id, user_id)`.
 
 #### Таблица: course_enrollments (Защищена RLS)
-
-Таблица связей для индивидуального зачисления пользователей на курсы (вне потоков).
-
+Индивидуальное зачисление пользователей на курсы (вне потоков).
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK → tenants.id ON DELETE CASCADE).
 * `user_id`: UUID (FK → users.id ON DELETE CASCADE).
 * `course_id`: UUID (FK → courses.id ON DELETE CASCADE).
 * `status`: VARCHAR(32) (CHECK: `'active'`, `'completed'`, `'dropped'`).
-* `progress`: NUMERIC(5, 4) (NOT NULL, DEFAULT 0.0000). Общий прогресс курса (0.0–1.0).
-* `completed_lessons_weight`: NUMERIC(10, 4) (NOT NULL, DEFAULT 0.0000). Суммарный вес завершённых уроков (для O(1)-пересчёта прогресса).
-* `completed_at`: TIMESTAMPTZ (NULLable). Когда курс был завершён.
+* `progress`: NUMERIC(5, 4) (NOT NULL, DEFAULT 0.0000).
+* `completed_lessons_weight`: NUMERIC(10, 4) (NOT NULL, DEFAULT 0.0000).
+* `completed_at`: TIMESTAMPTZ (NULLable).
 * `enrolled_at`: TIMESTAMPTZ (NOT NULL, DEFAULT NOW()).
 * `created_at` / `updated_at`: TIMESTAMPTZ.
 * **Ограничения:** Уникальный индекс `UNIQUE (tenant_id, user_id, course_id)`.
-* **RLS Политика:** `course_enrollment_tenant_isolation_policy` (фильтрация по `tenant_id = current_setting('app.current_tenant_id', true)`).
 
-> **Инкрементальный пересчёт прогресса.** Поле `completed_lessons_weight` обновляется транзакционно при каждом upsert в `lesson_progress` со `status = 'completed'`. Это позволяет пересчитывать `progress` за O(1) вместо агрегатного `SUM(weight)` по всем урокам курса.
+#### Таблица: nodes (Защищена RLS)
+Иерархическая структура контента внутри курса (главы, темы, уроки, тесты). Реализует паттерн Adjacency List + `ltree`.
+* `id`: UUID (Primary Key).
+* `tenant_id`: UUID (FK → tenants.id ON DELETE CASCADE).
+* `course_id`: UUID (FK → courses.id ON DELETE CASCADE).
+* `parent_id`: UUID (FK → nodes.id ON DELETE CASCADE, NULLable для корневых узлов).
+* `path`: ltree (NOT NULL). Иерархический путь (например, `1.2.5`).
+* `node_type`: VARCHAR(32) (NOT NULL, CHECK: `'chapter'`, `'topic'`, `'lesson'`, `'quiz'`, `'assignment'`).
+* `title`: VARCHAR(255).
+* `title_i18n`: JSONB (NULLable).
+* `content`: JSONB (NULLable. Текстовый контент, ссылки на медиа, конфигурация урока).
+* `metadata`: JSONB (NULLable. Настройки теста, вес урока для прогресса, дедлайны).
+* `order`: INTEGER (NOT NULL, DEFAULT 0). Порядок внутри родительского узла.
+* `is_archived`: BOOLEAN (NOT NULL, DEFAULT FALSE).
+* `created_at` / `updated_at`: TIMESTAMPTZ.
+* **Ограничения:** Уникальный индекс `UNIQUE (tenant_id, course_id, path)`.
+* **Индексы:** GiST индекс на колонку `path` для быстрых иерархических запросов (`<@`, `@>`).
+* **RLS Политика:** `node_tenant_isolation_policy`.
 
 #### Таблица: lesson_progress (Защищена RLS)
-
 Отслеживание прогресса студента по конкретному уроку.
-
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK → tenants.id ON DELETE CASCADE).
 * `user_id`: UUID (FK → users.id ON DELETE CASCADE).
-* `node_id`: UUID (FK → nodes.id ON DELETE CASCADE). Узел типа `lesson`.
+* `node_id`: UUID (FK → nodes.id ON DELETE CASCADE). Узел типа `lesson` или `quiz`.
 * `status`: VARCHAR(32) (CHECK: `'not_started'`, `'in_progress'`, `'completed'`).
 * `score`: NUMERIC(5, 4) (NULLable). Балл за тест (0.0–1.0).
-* `passed`: BOOLEAN (NULLable). Сдан ли тест (вычисляется сервером на основе `score >= passing_score`).
-* `time_spent_seconds`: INTEGER (NOT NULL, DEFAULT 0). Общее время в уроке.
-* `attempt_count`: INTEGER (NOT NULL, DEFAULT 0). Количество попыток (увеличивается только для тестов при `status = 'completed'`).
-* `last_position`: INTEGER (NOT NULL, DEFAULT 0). Позиция в медиа (секунды) для возобновления.
-* `completed_at`: TIMESTAMPTZ (NULLable). Когда урок завершён.
-* `client_modified_at`: TIMESTAMPTZ (NULLable). Зарезервировано для синхронизации PWA (Этап 11).
+* `passed`: BOOLEAN (NULLable). Сдан ли тест (вычисляется сервером).
+* `time_spent_seconds`: INTEGER (NOT NULL, DEFAULT 0).
+* `attempt_count`: INTEGER (NOT NULL, DEFAULT 0).
+* `last_position`: INTEGER (NOT NULL, DEFAULT 0).
+* `completed_at`: TIMESTAMPTZ (NULLable).
+* `client_modified_at`: TIMESTAMPTZ (NULLable). Зарезервировано для синхронизации PWA.
 * `created_at` / `updated_at`: TIMESTAMPTZ.
-* **Ограничения:**
-  * Уникальный индекс `UNIQUE (user_id, node_id)`.
-  * CHECK: `score >= 0 AND score <= 1` (если не NULL).
-  * CHECK: `time_spent_seconds >= 0`, `attempt_count >= 0`, `last_position >= 0`.
-* **Индексы:**
-  * `idx_lesson_progress_tenant_id` (для RLS).
-  * `idx_lesson_progress_user_id` (быстрый поиск прогресса студента).
-  * `idx_lesson_progress_node_id` (поиск по уроку).
-  * `idx_lesson_progress_status` (фильтрация по статусу).
-  * `idx_lesson_progress_completed` (partial index для завершённых уроков).
-* **RLS Политика:** `lesson_progress_tenant_isolation_policy` (фильтрация по `tenant_id = current_setting('app.current_tenant_id', true)`).
+* **Ограничения:** Уникальный индекс `UNIQUE (user_id, node_id)`. CHECK: `score >= 0 AND score <= 1` (если не NULL).
+* **Индексы:** `idx_lesson_progress_tenant_id`, `idx_lesson_progress_user_id`, `idx_lesson_progress_node_id`.
 
-> **Сервер вычисляет `passed`.** Клиент присылает только `score`, сервер вычисляет `passed = (score >= passing_score)` на основе `nodes.metadata.quiz.passing_score`. Это защита от подделки результатов тестов.
-
-> **Архивные уроки.** Уроки с `nodes.is_archived = true` исключаются из пересчёта прогресса курса. Попытка обновить прогресс архивного урока возвращает `410 Gone`.
-
-> **Идемпотентность.** Повторный запрос с теми же данными не перезаписывает `completed_at` — сохраняется время первого завершения.
-
-> **Триггер денормализации веса.** Поле `courses.metadata.total_weight` автоматически пересчитывается триггером `recalculate_course_total_weight()` при любых изменениях `nodes` (создание, удаление, архивация, изменение веса). Это исключает агрегатный запрос `SUM(weight)` при каждом upsert.
-
-#### Таблица: questions (Защищена RLS)
-
-Хранит вопросы для тестов и контрольных точек внутри курсов. Является частью Assessments Engine (Этап 10).
-
+#### Таблица: questions (Защищена RLS) — *Этап 10*
+Хранит вопросы для тестов и контрольных точек внутри курсов.
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK → tenants.id ON DELETE CASCADE).
 * `course_id`: UUID (FK → courses.id ON DELETE CASCADE).
 * `title`: VARCHAR(512) (NOT NULL). Текст или заголовок вопроса.
-* `description`: TEXT (NULLable). Дополнительное описание или контекст.
+* `description`: TEXT (NULLable).
 * `question_type`: VARCHAR(32) (NOT NULL). CHECK: `'multiple_choice'`, `'true_false'`, `'short_answer'`, `'long_answer'`.
-* `options`: JSONB (NULLable). Массив вариантов ответов для `multiple_choice` (структура: `[{"index": 0, "text": "..."}]`).
-* `correct_answer`: TEXT (NULLable). Эталонный ответ для `short_answer` или `true_false`.
-* `points`: INTEGER (NOT NULL, DEFAULT 1). Баллы за правильный ответ. CHECK: `points >= 0`.
-* `order`: INTEGER (NOT NULL). Порядок вопроса в тесте. CHECK: `order >= 1`.
+* `options`: JSONB (NULLable). Массив вариантов ответов.
+* `correct_answer`: TEXT (NULLable). Эталонный ответ.
+* `points`: INTEGER (NOT NULL, DEFAULT 1). CHECK: `points >= 0`.
+* `order`: INTEGER (NOT NULL). CHECK: `order >= 1`.
 * `created_at` / `updated_at`: TIMESTAMPTZ.
 * **Ограничения:** Уникальный индекс `UNIQUE (tenant_id, course_id, order)`.
 * **Индексы:** `idx_questions_tenant_id`, `idx_questions_course_id`.
-* **RLS Политика:** `question_tenant_isolation_policy` (фильтрация по `tenant_id = current_setting('app.current_tenant_id', true)`).
 
-#### Таблица: attempts (Защищена RLS)
-
+#### Таблица: attempts (Защищена RLS) — *Этап 10*
 Фиксирует факт начала и завершения попытки прохождения теста студентом.
-
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK → tenants.id ON DELETE CASCADE).
 * `user_id`: UUID (FK → users.id ON DELETE CASCADE).
@@ -330,72 +286,38 @@ CREATE TABLE tenants (
 * `started_at`: TIMESTAMPTZ (NOT NULL, DEFAULT NOW()).
 * `completed_at`: TIMESTAMPTZ (NULLable).
 * `score`: NUMERIC(5, 4) (NULLable). Итоговый нормализованный балл (0.0–1.0). CHECK: `score >= 0.0 AND score <= 1.0`.
-* `passed`: BOOLEAN (NULLable). Признак успешной сдачи.
-* `time_limit_seconds`: INTEGER (NULLable). Лимит времени на прохождение. CHECK: `time_limit_seconds > 0`.
-* `time_spent_seconds`: INTEGER (NOT NULL, DEFAULT 0). Фактически затраченное время. CHECK: `time_spent_seconds >= 0`.
-* `attempt_number`: INTEGER (NOT NULL). Порядковый номер попытки пользователя по этому курсу. CHECK: `attempt_number >= 1`.
+* `passed`: BOOLEAN (NULLable).
+* `time_limit_seconds`: INTEGER (NULLable). CHECK: `time_limit_seconds > 0`.
+* `time_spent_seconds`: INTEGER (NOT NULL, DEFAULT 0). CHECK: `time_spent_seconds >= 0`.
+* `attempt_number`: INTEGER (NOT NULL). CHECK: `attempt_number >= 1`.
 * `created_at` / `updated_at`: TIMESTAMPTZ.
 * **Индексы:** `idx_attempts_tenant_id`, `idx_attempts_user_course` (composite: `user_id`, `course_id`), `idx_attempts_status`.
-* **RLS Политика:** `attempt_tenant_isolation_policy` (фильтрация по `tenant_id = current_setting('app.current_tenant_id', true)`).
 
-#### Таблица: answers (Защищена RLS)
-
-Хранит конкретные ответы студента на вопросы в рамках попытки, включая результаты автоматической проверки.
-
+#### Таблица: answers (Защищена RLS) — *Этап 10*
+Хранит конкретные ответы студента на вопросы в рамках попытки.
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK → tenants.id ON DELETE CASCADE).
 * `attempt_id`: UUID (FK → attempts.id ON DELETE CASCADE).
 * `question_id`: UUID (FK → questions.id ON DELETE CASCADE).
-* `answer_text`: TEXT (NOT NULL). Текст ответа студента или JSON-представление выбранных вариантов.
-* `is_correct`: BOOLEAN (NULLable). Результат автоматической проверки (NULL для `long_answer`, требующего ручной проверки).
-* `points_earned`: INTEGER (NOT NULL, DEFAULT 0). Заработанные баллы. CHECK: `points_earned >= 0`.
-* `explanation`: TEXT (NULLable). Объяснение правильного ответа (заполняется при `is_correct = false` или для справки).
+* `answer_text`: TEXT (NOT NULL). Текст ответа или JSON-представление выбранных вариантов.
+* `is_correct`: BOOLEAN (NULLable). Результат автоматической проверки.
+* `points_earned`: INTEGER (NOT NULL, DEFAULT 0). CHECK: `points_earned >= 0`.
+* `explanation`: TEXT (NULLable). Объяснение правильного ответа.
 * `answered_at`: TIMESTAMPTZ (NOT NULL, DEFAULT NOW()).
-* **Ограничения:** Уникальный индекс `UNIQUE (tenant_id, attempt_id, question_id)` (защита от дублирования ответов на один вопрос в одной попытке).
+* **Ограничения:** Уникальный индекс `UNIQUE (tenant_id, attempt_id, question_id)`.
 * **Индексы:** `idx_answers_attempt_id`, `idx_answers_question_id`.
-* **RLS Политика:** `answer_tenant_isolation_policy` (фильтрация по `tenant_id = current_setting('app.current_tenant_id', true)`).
 
-#### Таблица: quizzes (Защищена RLS)
-
-> **Примечание:** Высокоуровневая конфигурация тестов. Детальная нормализованная структура вопросов и попыток вынесена в таблицы `questions`, `attempts` и `answers` (см. выше).
-
-* `id`: UUID (Primary Key).
-* `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
-* `course_id`: UUID (FK -> courses.id ON DELETE CASCADE).
-* `unit_id`: VARCHAR(128) (Строковый идентификатор ноды модуля внутри общего `course_tree`).
-* `title_i18n`: JSONB (NULLable).
-* `version`: INTEGER (NOT NULL, DEFAULT 1).
-* `pool_config`: JSONB (Массив вопросов: типы вопросов, варианты ответов, веса баллов, правила случайной выборки из категорий).
-* `passing_rules`: JSONB (Количество разрешенных попыток, тайм-ليмит на прохождение, штрафные коэффициенты).
-* `created_at` / `updated_at`: TIMESTAMPTZ.
-
-#### Таблица: assignments (Защищена RLS)
-
-Практические задания, требующие экспертной проверки ментором.
-
-* `id`: UUID (Primary Key).
-* `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
-* `course_id`: UUID (FK -> courses.id ON DELETE CASCADE).
-* `unit_id`: VARCHAR(128).
-* `title_i18n`: JSONB (NULLable).
-* `version`: INTEGER (NOT NULL, DEFAULT 1).
-* `instruction_text`: TEXT (Подробное техническое задание на практическую работу).
-* `instruction_text_i18n`: JSONB (NULLable).
-* `evaluation_rubric`: JSONB (Декларативная матрица критериев и шкал ручной проверки для ментора).
-* `created_at` / `updated_at`: TIMESTAMPTZ.
-
-#### Таблица: certificates (Защищена RLS)
-
+#### Таблица: certificates (Защищена RLS) — *Этап 11*
 Реестр выданных цифровых достижений по результатам обучения.
-
 * `id`: UUID (Primary Key).
 * `tenant_id`: UUID (FK -> tenants.id ON DELETE CASCADE).
-* `user_id`: UUID (FK -> users.id ON DELETE CASCADE). Ссылка на `users.id` (роль личности в тенанте, получившего сертификат).
+* `user_id`: UUID (FK -> users.id ON DELETE CASCADE).
 * `target_type`: VARCHAR(32) (Ограничение CHECK: `'course'`, `'program'`, `'batch'`).
 * `target_id`: UUID (Идентификатор сущности, за которую выдан документ).
-* `verification_hash`: VARCHAR(64) (Уникальный публичный хэш-код для верификации сторонними системами).
+* `verification_hash`: VARCHAR(64) (Уникальный публичный хэш-код SHA-256 в hex-формате для верификации сторонними системами).
 * `issued_at`: TIMESTAMPTZ.
 * **Ограничения:** Уникальный индекс `UNIQUE (verification_hash)`.
+* **Индексы:** `idx_certificates_tenant_user` (composite: `tenant_id`, `user_id`), `idx_certificates_verification_hash`.
 
 ### 1.4. Контроль очистки контекста тенанта в Rust (ФСТЭК Compliance)
 
@@ -430,8 +352,6 @@ CREATE TABLE tenants (
 * **Политика сжатия (Compression Policy):** По истечении 14 дней с момента записи чанки гипертаблицы автоматически переводятся в колоночный формат хранения TimescaleDB со сжатием. Данные сегментируются по колонкам `tenant_id` и `course_id` и сортируются по `timestamp DESC`.
 * **Идемпотентность записи:** Первичный ключ `statement_id` (UNIQUE) обеспечивает защиту от дублей на уровне СУБД. Бэкенд `api` использует `INSERT ... ON CONFLICT (statement_id) DO NOTHING`. Повторная отправка пакета из offline-очереди PWA не создаёт дублей; `statement_id` возвращается клиенту в массиве `accepted` (см. [`OPEN_API.md`](OPEN_API.md) §3.4).
 
-> **Альтернативная схема колонок.** В ранних прототипах использовалась схема с `id UUID NOT NULL` в составе составного PK `(id, timestamp)`, а также отдельными колонками `actor_identity_id`, `verb`, `object_id`, `payload`. В актуальной версии эта схема заменена на `statement_id` + `statement_payload` + `user_id`/`course_id` (для совместимости с Identity-First). При миграциях со старых инсталляций применять `MIGRATIONS.md`.
-
 ### Вариант Б: ClickHouse (Колоночный OLAP-кластер)
 
 Применяется при экстремальных нагрузках для быстрой обработки аналитики в реальном времени. Данные передаются бэкендом на Rust асинхронными пакетами (Bulk Insert).
@@ -442,16 +362,14 @@ CREATE TABLE tenants (
 > 3. **Права на уровне СУБД** — пользователь ClickHouse, под которым работает бэкенд, имеет право только на `SELECT` и `INSERT` в таблицу `xapi_statements`; доступ к другим БД и системным таблицам запрещён.
 > 4. **Тесты изоляции** — обязательный интеграционный тест: запрос от тенанта A не должен возвращать ни одной строки тенанта B, даже при попытке инъекции через `course_id` или другие параметры.
 > 5. **Рекомендация для коробочных поставок.** Для коробочных поставок с требованиями строгого ИБ-аудита (госсектор, крупные корпорации, обработка ПДн) **рекомендуется Вариант А (TimescaleDB + RLS)**. Вариант Б применяется только для тенантов, готовых принять архитектурную изоляцию с компенсирующими мерами (пункты 1–4). При provisioning тенанта с требованиями максимальной изоляции — по умолчанию выбирается Вариант А.
->
-> Эта схема слабее принудительной RLS PostgreSQL, но она явно описана и проверяема. Приоритет для Enterprise-тенантов с требованиями максимальной изоляции — Вариант А (TimescaleDB + RLS).
 
 * **Спецификация таблицы `xapi_statements`:**
-  * **Движок таблицы (Engine):** `MergeTree` — **без дедупликации**. Иммутабельный подход: платформа сохраняет все пришедшие statements как независимые исторические факты (см. [`OFFLINE_SYNC.md`](OFFLINE_SYNC.md) §5 и [`ARCHITECTURE.md`](ARCHITECTURE.md) §3.4). Использование `ReplacingMergeTree` и любых других дедуплицирующих движков запрещено — это нарушает принцип «все попытки сохраняются».
+  * **Движок таблицы (Engine):** `MergeTree` — **без дедупликации**. Иммутабельный подход: платформа сохраняет все пришедшие statements как независимые исторические факты (см. [`OFFLINE_SYNC.md`](OFFLINE_SYNC.md) §5 и [`ARCHITECTURE.md`](ARCHITECTURE.md) §3.4). Использование `ReplacingMergeTree` и любых других дедуплицирующих движков запрещено.
   * **Ключ сортировки (ORDER BY):** `(tenant_id, course_id, user_id, timestamp)` (обеспечивает мгновенный поиск и построение отчетов успеваемости в рамках тенанта и конкретного курса).
   * **Схема колонок данных:**
     * `tenant_id`: UUID.
     * `statement_id`: UUID.
-    * `user_id`: UUID. Ссылка на `users.id` (роль личности в тенанте, совершившего действие).
+    * `user_id`: UUID. Ссылка на `users.id`.
     * `course_id`: UUID.
     * `timestamp`: DateTime64(3, 'UTC') (Время действия на клиенте с точностью до миллисекунд).
     * `stored_at`: DateTime64(3, 'UTC') (Серверное время коммита).
@@ -466,12 +384,10 @@ CREATE TABLE tenants (
 ClickHouse не поддерживает `ON CONFLICT DO NOTHING` как PostgreSQL и не имеет дедуплицирующего движка (он запрещён — см. выше). Идемпотентность обеспечивается **на уровне приложения** в `api`:
 
 1. При получении пакета statements от клиента (см. [`OPEN_API.md`](OPEN_API.md) §3.4) крейт `api` выполняет **batch-`SELECT`** по всем `statement_id` пакета:
-
    ```sql
    SELECT statement_id FROM xapi_statements
    WHERE tenant_id = ? AND statement_id IN (?, ?, ...);
    ```
-
 2. `statement_id`, уже присутствующие в LRS, исключаются из вставляемого набора.
 3. `INSERT` выполняется только для новых `statement_id`.
 4. Все `statement_id` из пакета (новые и уже существующие) возвращаются клиенту в массиве `accepted` — клиент очищает их из IndexedDB как подтверждённые.
@@ -490,7 +406,6 @@ ClickHouse не поддерживает `ON CONFLICT DO NOTHING` как Postgre
 * Отмена мутации ограничена.
 
 **Рекомендации для крупных инсталляций:**
-
 1. Выполнять анонимизацию **в окна низкой нагрузки**, мониторить прогресс через `system.mutations`.
 2. Для очень больших объёмов (>1 ТБ в партиции) использовать паттерн **«холодный архив»** вместо построчной анонимизации:
    * старые партиции (например, старше 730 дней) экспортируются в отдельное S3-совместимое хранилище в неизменном виде;
