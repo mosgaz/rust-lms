@@ -1,4 +1,5 @@
 pub mod dashboard;
 pub mod profile;
-// pub mod admin;
+
+pub mod courses;
 // pub mod student;

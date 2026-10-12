@@ -7,7 +7,9 @@ pub use paste;
 #[allow(unused_imports)]
 pub use tw_merge::*;
 #[allow(unused_imports)]
-pub use super::Utils;
+// pub use super::Utils;
+// pub use super::use_random_transition_name;
+pub use super::random;
 
 /// A macro that creates a component with tailwind class merging
 ///
@@ -15,7 +17,7 @@ pub use super::Utils;
 ///
 /// ```
 /// use leptos::prelude::*;
-/// use leptos_ui::clx;
+/// use rust_lms_ui::clx;
 ///
 /// // Define the component
 /// clx! {Card, div, "rounded-lg p-4", "bg-sky-500"} // 🩵
@@ -108,15 +110,15 @@ macro_rules! transition {
         ) -> impl IntoView {
             let merged_classes = tw_merge::tw_merge!(tw_merge::tw_join!($($base_class),+), class);
 
-			// Генерируем уникальное имя анимации для DOM
-            let random_name = Utils::use_random_transition_name();
+			// Уникальное имя для DOM, чтобы браузер отследил переход.
+            // Функция уже возвращает строку вида "view-transition-name: _gen_id_N".
+            let transition_style = random::use_random_transition_name();
 
             view! {
                 <$element
                     class=merged_classes
                     data-name=stringify!($name)
-					style=format!("view-transition-name: {}", random_name)
-					// style=format!("--transition-name: {}", random_name)
+					style=transition_style
                 >
                     {children()}
                 </$element>

@@ -3265,6 +3265,7 @@ dependencies = [
  "leptos_meta",
  "leptos_router",
  "rust-lms-icons",
+ "rust-lms-shared",
  "rust-lms-ui",
  "serde",
  "serde-wasm-bindgen",

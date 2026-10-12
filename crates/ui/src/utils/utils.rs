@@ -22,3 +22,13 @@ impl Utils {
         format!("view-transition-name: {random_id}")
     }
 }
+
+/// Free-function form of [`Utils::use_random_id`].
+pub fn use_random_id() -> String {
+    Utils::use_random_id()
+}
+
+/// Free-function form of [`Utils::use_random_transition_name`].
+pub fn use_random_transition_name() -> String {
+    Utils::use_random_transition_name()
+}

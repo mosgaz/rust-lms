@@ -35,6 +35,9 @@ use crate::student::pages::dashboard::StudentDashboard;
 use crate::admin::pages::profile::AdminProfile;
 use crate::student::pages::profile::StudentProfile;
 
+use crate::student::pages::courses::CoursesPage;
+
+// TODO:
 use crate::ui::hooks::use_scroll_lock;
 
 #[cfg(target_arch = "wasm32")]
@@ -175,7 +178,11 @@ pub fn App() -> impl IntoView {
 				<ParentRoute path=path!("/student") view=StudentPanelLayout>
 					<Route path=path!("") view=StudentDashboard />
 					<Route path=path!("profile") view=StudentProfile />
+					
 					// <Route path=path!("my-courses") view=StudentMyCourses />
+					// <Route path=path!("courses") view=CoursesPage />
+					<Route path=path!("my-courses") view=CoursesPage />
+					
 					// <Route path=path!("schedule") view=StudentSchedule />
 					// <Route path=path!("grades") view=StudentGrades />
 					// <Route path=path!("settings") view=StudentSettings />

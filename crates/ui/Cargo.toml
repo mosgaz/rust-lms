@@ -12,6 +12,7 @@ description = "Библиотека переиспользуемых Leptos-ко
 [dependencies]
 leptos = { workspace = true }
 leptos_router = { workspace = true }
+# leptos_router = { workspace = true, features = ["ssr"] }
 # Важнейшая зависимость для макроса clx! и работы со строками классов
 tw_merge = { workspace = true }
 strum = { workspace = true }
