@@ -1,3 +1,4 @@
+// crates/shared/src/models/question.rs
 //! Модель вопроса (Question) для тестов и оценок.
 //!
 //! Вопрос может принадлежать тесту (Quiz) или быть самостоятельным.
@@ -17,6 +18,20 @@ use sqlx::Type;
 #[cfg_attr(feature = "server", derive(Type))]
 #[cfg_attr(feature = "server", sqlx(transparent))]
 pub struct QuestionId(pub Uuid);
+
+impl QuestionId {
+    /// Генерирует новый случайный идентификатор вопроса (UUID v4).
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
+impl Default for QuestionId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl fmt::Display for QuestionId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

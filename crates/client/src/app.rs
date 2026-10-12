@@ -36,6 +36,7 @@ use crate::admin::pages::profile::AdminProfile;
 use crate::student::pages::profile::StudentProfile;
 
 use crate::student::pages::courses::CoursesPage;
+use crate::student::pages::player::PlayerPage;
 
 // TODO:
 use crate::ui::hooks::use_scroll_lock;
@@ -182,6 +183,8 @@ pub fn App() -> impl IntoView {
 					// <Route path=path!("my-courses") view=StudentMyCourses />
 					// <Route path=path!("courses") view=CoursesPage />
 					<Route path=path!("my-courses") view=CoursesPage />
+					
+					<Route path=path!("courses/:course_id/player") view=PlayerPage />
 					
 					// <Route path=path!("schedule") view=StudentSchedule />
 					// <Route path=path!("grades") view=StudentGrades />

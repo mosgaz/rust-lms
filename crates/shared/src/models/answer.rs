@@ -1,3 +1,4 @@
+// crates/shared/src/models/answer.rs
 //! Модель ответа (Answer) на вопрос в попытке.
 //!
 //! Каждый ответ связан с конкретной попыткой и вопросом.
@@ -17,6 +18,20 @@ use sqlx::Type;
 #[cfg_attr(feature = "server", derive(Type))]
 #[cfg_attr(feature = "server", sqlx(transparent))]
 pub struct AnswerId(pub Uuid);
+
+impl AnswerId {
+    /// Генерирует новый случайный идентификатор ответа (UUID v4).
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
+impl Default for AnswerId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl fmt::Display for AnswerId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

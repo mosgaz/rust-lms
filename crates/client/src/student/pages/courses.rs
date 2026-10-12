@@ -3,6 +3,8 @@
 //!
 //! Отображает список курсов, на которые зачислен пользователь,
 //! с индикаторами прогресса (Этап 9) и кнопками для продолжения обучения.
+//!
+//! ⚠️ На этапе вёрстки БД не подключена — server-функция возвращает мок-данные.
 
 use leptos::prelude::*;
 use rust_lms_shared::models::CourseEnrollment;
@@ -10,7 +12,7 @@ use rust_lms_shared::models::CourseEnrollment;
 /// Компонент страницы списка курсов студента.
 #[component]
 pub fn CoursesPage() -> impl IntoView {
-    // ✅ Leptos 0.7: Resource::new вместо create_resource
+    // ✅ Leptos 0.7/0.8: Resource::new вместо create_resource
     let courses_resource = Resource::new(
         || (),
         |_| fetch_enrolled_courses_with_progress(),
@@ -18,9 +20,11 @@ pub fn CoursesPage() -> impl IntoView {
 
     view! {
         <div class="container mx-auto px-4 py-8 max-w-7xl">
+            // i18n: t!("student.courses.title")
             <h1 class="text-3xl font-bold mb-2 text-gray-900 dark:text-white">
                 "Мои курсы"
             </h1>
+            // i18n: t!("student.courses.subtitle")
             <p class="text-gray-600 dark:text-gray-400 mb-8">
                 "Отслеживайте свой прогресс и продолжайте обучение"
             </p>
@@ -98,6 +102,12 @@ fn CourseCard(enrollment: CourseEnrollment) -> impl IntoView {
     // ✅ course_id — обёртка CourseId(Uuid), для URL берём .0
     let course_id = enrollment.course_id.0;
 
+    // ⚠️ В DTO CourseEnrollment нет title/description.
+    // На этапе вёрстки показываем заглушку на основе course_id.
+    // При подключении БД — тянуть Course отдельным ресурсом или расширить server-функцию.
+    let course_title = format!("Курс {}", &course_id.to_string()[..8]);
+    let course_description = "Описание курса будет загружено после подключения БД";
+
     view! {
         <div class="group bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col">
             <div class="p-6 flex-grow">
@@ -112,15 +122,12 @@ fn CourseCard(enrollment: CourseEnrollment) -> impl IntoView {
                     </span>
                 </div>
 
-                // ⚠️ В DTO нет title/description — показываем course_id как заглушку.
-                // Если нужны реальные title/description — их надо тянуть отдельным запросом
-                // (или расширить server-функцию, вернув кортеж/новый DTO).
                 <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2 line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                    {format!("Курс {}", course_id)}
+                    {course_title}
                 </h3>
 
                 <p class="text-gray-600 dark:text-gray-300 text-sm mb-6 line-clamp-3">
-                    "Описание отсутствует"
+                    {course_description}
                 </p>
 
                 // Индикатор прогресса (Progress Bar)
@@ -169,13 +176,56 @@ fn SkeletonCard() -> impl IntoView {
 ///
 /// В реальной реализации здесь будет вызов API-клиента к эндпоинту:
 /// `GET /api/v1/courses/me/enrollments` (или аналогичному из Этапа 7/9).
+///
+/// ⚠️ На этапе вёрстки возвращаем мок-данные, чтобы визуально проверить UI.
 #[server(GetEnrolledCoursesWithProgress, "/api")]
 pub async fn fetch_enrolled_courses_with_progress() -> Result<Vec<CourseEnrollment>, ServerFnError> {
+    // ✅ Локальные импорты: используются только внутри server-функции,
+    // поэтому не поднимаются на уровень модуля (иначе — unused_imports warning на клиенте).
+    use chrono::Utc;
+    use rust_lms_shared::models::{
+        CourseEnrollmentId, CourseId, EnrollmentStatus, UserId,
+    };
+
     // TODO: Интеграция с реальным API-клиентом или прямой вызов сервиса через контекст Leptos
     // Пример:
     // let ctx = expect_context::<ApiContext>();
     // ctx.client.get_enrolled_courses().await.map_err(ServerFnError::from)
 
-    // Временная заглушка для демонстрации структуры и компиляции
-    Ok(vec![])
+    // Мок-данные: 3 курса с разным прогрессом (0%, 45%, 100%)
+    let now = Utc::now();
+    let mock = vec![
+        // Курс 1: не начат
+        CourseEnrollment {
+            id: CourseEnrollmentId::new(),
+            course_id: CourseId::new(),
+            user_id: UserId::new(),
+            enrolled_at: now,
+            completed_at: None,
+            progress: 0.0,
+            status: EnrollmentStatus::Active,
+        },
+        // Курс 2: в процессе
+        CourseEnrollment {
+            id: CourseEnrollmentId::new(),
+            course_id: CourseId::new(),
+            user_id: UserId::new(),
+            enrolled_at: now,
+            completed_at: None,
+            progress: 0.45,
+            status: EnrollmentStatus::Active,
+        },
+        // Курс 3: завершён
+        CourseEnrollment {
+            id: CourseEnrollmentId::new(),
+            course_id: CourseId::new(),
+            user_id: UserId::new(),
+            enrolled_at: now,
+            completed_at: Some(now),
+            progress: 1.0,
+            status: EnrollmentStatus::Completed,
+        },
+    ];
+
+    Ok(mock)
 }

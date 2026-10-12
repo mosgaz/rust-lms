@@ -1,3 +1,4 @@
+// crates/shared/src/models/lesson_progress.rs
 //! Модель прогресса студента по уроку (LessonProgress).
 
 use chrono::{DateTime, Utc};

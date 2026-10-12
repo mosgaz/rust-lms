@@ -1,3 +1,4 @@
+// crates/shared/src/models/attempt.rs
 //! Модель попытки (Attempt) прохождения теста.
 //!
 //! Каждая попытка связана с пользователем и тестом (курсом).
@@ -17,6 +18,20 @@ use sqlx::Type;
 #[cfg_attr(feature = "server", derive(Type))]
 #[cfg_attr(feature = "server", sqlx(transparent))]
 pub struct AttemptId(pub Uuid);
+
+impl AttemptId {
+    /// Генерирует новый случайный идентификатор попытки (UUID v4).
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
+impl Default for AttemptId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl fmt::Display for AttemptId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
