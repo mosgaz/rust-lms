@@ -664,6 +664,8 @@ pub async fn fetch_course_with_tree(_course_id: String) -> Result<CourseWithTree
             description: Some("Знакомство с языком и инструментами".to_string()),
             metadata: serde_json::json!({}),
             sort_order: 1,
+            is_archived: false,
+            archived_at: None,
         },
         Node {
             id: NodeId::new(),
@@ -680,6 +682,8 @@ pub async fn fetch_course_with_tree(_course_id: String) -> Result<CourseWithTree
                 "has_assessment": false
             }),
             sort_order: 1,
+            is_archived: false,
+            archived_at: None,
         },
         Node {
             id: NodeId::new(),
@@ -696,6 +700,8 @@ pub async fn fetch_course_with_tree(_course_id: String) -> Result<CourseWithTree
                 "has_assessment": true
             }),
             sort_order: 2,
+            is_archived: false,
+            archived_at: None,
         },
     ];
 
@@ -752,6 +758,8 @@ pub async fn fetch_current_lesson(_course_id: String) -> Result<Option<Node>, Se
             "has_assessment": true
         }),
         sort_order: 2,
+        is_archived: false,
+        archived_at: None,
     }))
 }
 
@@ -774,7 +782,7 @@ pub async fn fetch_test_questions(lesson_id: Uuid) -> Result<TestWithQuestions, 
 
     let questions = vec![
         Question {
-            // ✅ QuestionId::new() теперь доступен после патча shared
+            // ✅ QuestionId::new() доступен после патча shared
             id: QuestionId::new(),
             tenant_id,
             course_id,

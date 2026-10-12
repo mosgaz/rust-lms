@@ -94,7 +94,7 @@ impl NodeRepository {
         let new_path = match parent_id {
             Some(pid) => {
                 // Получаем path родителя
-                let parent_path: String = sqlx::query_scalar(  // <-- String, не Option<String>
+                let parent_path: String = sqlx::query_scalar(
                     "SELECT path::text FROM nodes WHERE id = $1"
                 )
                 .bind(pid.0)
@@ -119,7 +119,7 @@ impl NodeRepository {
             r#"
             INSERT INTO nodes (id, tenant_id, parent_id, path, node_type, course_id, title, title_i18n, description, metadata, sort_order)
             VALUES ($1, $2, $3, $4::ltree, $5, $6, $7, $8, $9, $10, $11)
-            RETURNING id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order
+            RETURNING id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order, is_archived, archived_at
             "#,
         )
         .bind(node_id.0)
@@ -154,7 +154,7 @@ impl NodeRepository {
 
         let row: NodeRow = sqlx::query_as(
             r#"
-            SELECT id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order
+            SELECT id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order, is_archived, archived_at
             FROM nodes WHERE id = $1
             "#,
         )
@@ -180,7 +180,7 @@ impl NodeRepository {
 
         let rows: Vec<NodeRow> = sqlx::query_as(
             r#"
-            SELECT id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order
+            SELECT id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order, is_archived, archived_at
             FROM nodes WHERE parent_id = $1 ORDER BY sort_order ASC
             "#,
         )
@@ -215,7 +215,7 @@ impl NodeRepository {
         // Получаем всех потомков (включая сам узел)
         let rows: Vec<NodeRow> = sqlx::query_as(
             r#"
-            SELECT id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order
+            SELECT id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order, is_archived, archived_at
             FROM nodes WHERE path <@ $1::ltree ORDER BY path, sort_order ASC
             "#,
         )
@@ -240,7 +240,7 @@ impl NodeRepository {
 
         let rows: Vec<NodeRow> = sqlx::query_as(
             r#"
-            SELECT id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order
+            SELECT id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order, is_archived, archived_at
             FROM nodes WHERE course_id = $1 ORDER BY path, sort_order ASC
             "#,
         )
@@ -276,7 +276,7 @@ impl NodeRepository {
                 metadata = COALESCE($4, metadata),
                 updated_at = NOW()
             WHERE id = $5
-            RETURNING id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order
+            RETURNING id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order, is_archived, archived_at
             "#,
         )
         .bind(title)
@@ -348,7 +348,7 @@ impl NodeRepository {
         // Возвращаем обновлённый узел
         let row: NodeRow = sqlx::query_as(
             r#"
-            SELECT id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order
+            SELECT id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order, is_archived, archived_at
             FROM nodes WHERE id = $1
             "#,
         )
@@ -400,7 +400,7 @@ impl NodeRepository {
             r#"
             UPDATE nodes SET sort_order = $1, updated_at = NOW()
             WHERE id = $2
-            RETURNING id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order
+            RETURNING id, tenant_id, parent_id, path::text, node_type, course_id, title, title_i18n, description, metadata, sort_order, is_archived, archived_at
             "#,
         )
         .bind(new_sort_order)
@@ -440,6 +440,8 @@ impl NodeRepository {
             description: row.description,
             metadata: row.metadata,
             sort_order: row.sort_order,
+            is_archived: row.is_archived,
+            archived_at: row.archived_at,
         })
     }
 }
@@ -459,6 +461,8 @@ struct NodeRow {
     description: Option<String>,
     metadata: JsonValue,
     sort_order: i32,
+    is_archived: bool,
+    archived_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[cfg(test)]
@@ -496,6 +500,8 @@ mod tests {
             description: Some("Description".to_string()),
             metadata: serde_json::json!({"content_type": "video"}),
             sort_order: 0,
+            is_archived: false,
+            archived_at: None,
         };
     }
 }

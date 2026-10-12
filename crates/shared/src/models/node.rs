@@ -105,4 +105,16 @@ pub struct Node {
     pub metadata: serde_json::Value,
     /// Порядок сортировки среди братьев (детей одного родителя).
     pub sort_order: i32,
+    /// Флаг архивации (мягкое удаление).
+    ///
+    /// Архивные уроки исключаются из пересчёта прогресса курса
+    /// (см. `trg_recalculate_course_total_weight`).
+    /// Соответствует колонке `nodes.is_archived` в БД.
+    #[serde(default)]
+    pub is_archived: bool,
+    /// Дата и время архивации (если `is_archived = true`).
+    ///
+    /// Соответствует колонке `nodes.archived_at` в БД.
+    #[serde(default)]
+    pub archived_at: Option<chrono::DateTime<chrono::Utc>>,
 }
