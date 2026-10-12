@@ -39,6 +39,9 @@ impl CourseRepository {
     }
 
     /// Создаёт новый курс.
+    ///
+    /// `metadata` не передаётся параметром — БД сама подставит `'{}'::jsonb`
+    /// (см. `DEFAULT '{}'::jsonb` в миграции `20261006000001`).
     pub async fn create(
         &self,
         tenant_id: TenantId,
@@ -59,7 +62,7 @@ impl CourseRepository {
             r#"
             INSERT INTO courses (id, tenant_id, title, title_i18n, description, description_i18n, version, completion_criteria)
             VALUES ($1, $2, $3, $4, $5, $6, 1, $7)
-            RETURNING id, tenant_id, title, title_i18n, description, description_i18n, version, completion_criteria
+            RETURNING id, tenant_id, title, title_i18n, description, description_i18n, version, completion_criteria, metadata
             "#,
         )
         .bind(course_id.0)
@@ -89,7 +92,7 @@ impl CourseRepository {
 
         let row: CourseRow = sqlx::query_as(
             r#"
-            SELECT id, tenant_id, title, title_i18n, description, description_i18n, version, completion_criteria
+            SELECT id, tenant_id, title, title_i18n, description, description_i18n, version, completion_criteria, metadata
             FROM courses WHERE id = $1
             "#,
         )
@@ -116,7 +119,7 @@ impl CourseRepository {
 
         let rows: Vec<CourseRow> = sqlx::query_as(
             r#"
-            SELECT id, tenant_id, title, title_i18n, description, description_i18n, version, completion_criteria
+            SELECT id, tenant_id, title, title_i18n, description, description_i18n, version, completion_criteria, metadata
             FROM courses ORDER BY created_at DESC LIMIT $1 OFFSET $2
             "#,
         )
@@ -130,6 +133,9 @@ impl CourseRepository {
     }
 
     /// Обновляет курс.
+    ///
+    /// `metadata` не обновляется — она управляется триггером
+    /// `trg_recalculate_course_total_weight` и/или отдельными операциями.
     pub async fn update(
         &self,
         tenant_id: TenantId,
@@ -155,7 +161,7 @@ impl CourseRepository {
                 completion_criteria = COALESCE($5, completion_criteria),
                 updated_at = NOW()
             WHERE id = $6
-            RETURNING id, tenant_id, title, title_i18n, description, description_i18n, version, completion_criteria
+            RETURNING id, tenant_id, title, title_i18n, description, description_i18n, version, completion_criteria, metadata
             "#,
         )
         .bind(title)
@@ -234,6 +240,7 @@ impl CourseRepository {
             description_i18n: row.description_i18n,
             version: row.version,
             completion_criteria: row.completion_criteria,
+            metadata: row.metadata,
         }
     }
 }
@@ -249,6 +256,7 @@ struct CourseRow {
     description_i18n: Option<JsonValue>,
     version: i32,
     completion_criteria: Option<JsonValue>,
+    metadata: JsonValue,
 }
 
 #[cfg(test)]
@@ -273,6 +281,7 @@ mod tests {
             description_i18n: None,
             version: 1,
             completion_criteria: None,
+            metadata: serde_json::json!({}),
         };
     }
 }

@@ -70,4 +70,17 @@ pub struct Course {
     /// Настраиваемые критерии завершения курса (JSONB).
     /// Пример: {"mode": "all_of", "rules": [{"type": "min_progress", "value": 0.8}]}
     pub completion_criteria: Option<serde_json::Value>,
+    /// Расширяемые метаданные курса (JSONB).
+    ///
+    /// Соответствует колонке `courses.metadata` в БД (`NOT NULL DEFAULT '{}'::jsonb`).
+    ///
+    /// Содержит, в частности:
+    /// - `total_weight` — суммарный вес всех неархивных уроков курса,
+    ///   автоматически пересчитывается триггером `trg_recalculate_course_total_weight`
+    ///   (см. миграцию `20261009000001_add_total_weight_to_courses.sql`).
+    /// - прочие расширяемые поля.
+    ///
+    /// `#[serde(default)]` — для совместимости со старыми данными без metadata.
+    #[serde(default)]
+    pub metadata: serde_json::Value,
 }

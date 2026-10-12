@@ -29,6 +29,7 @@ use crate::student::StudentPanelLayout;
 // Admin
 use crate::admin::pages::dashboard::AdminDashboard;
 use crate::admin::pages::profile::AdminProfile;
+use crate::admin::pages::courses::AdminCourseList;
 
 // Student
 use crate::student::pages::dashboard::StudentDashboard;
@@ -168,7 +169,7 @@ pub fn App() -> impl IntoView {
                 <ParentRoute path=path!("/admin") view=AdminPanelLayout>
 					<Route path=path!("") view=AdminDashboard />
 					<Route path=path!("profile") view=AdminProfile />
-					// <Route path=path!("courses") view=AdminCourses />
+					<Route path=path!("courses") view=AdminCourseList />
 					// <Route path=path!("tests") view=AdminTests />
 					// <Route path=path!("users") view=AdminUsers />
 					// <Route path=path!("settings") view=AdminSettings />
