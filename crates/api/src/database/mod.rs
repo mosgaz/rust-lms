@@ -18,6 +18,6 @@ pub use repositories::{
     UserRepositoryError,
 	QuestionRepository, QuestionRepositoryError,
 	AttemptRepository, AttemptRepositoryError, ScoredAnswer,
-	Certificate, CertificateRepository
+	CertificateRepository
 };
 pub use rls::RlsContext;

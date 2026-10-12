@@ -9,6 +9,7 @@ pub mod models;
 
 pub use models::{
     Batch, BatchEnrollment, BatchEnrollmentId, BatchId, BatchRole, BatchStatus,
+	Certificate, CertificateId,
     CompletionCriteria, CompletionCriteriaError, CompletionMode, CompletionRule, Course,
     CourseEnrollment, CourseEnrollmentId, CourseId, CourseProgressSummary, EnrollmentStatus,
     Identity, IdentityCredentials, IdentityId, LessonProgress, LessonProgressId, LessonStatus, Node,

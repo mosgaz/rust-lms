@@ -5,7 +5,8 @@
 //! публичной верификации и скачивания PDF-файла.
 
 use crate::auth::JwtClaims;
-use crate::database::{Certificate, RlsContext};
+use crate::database::RlsContext;
+use rust_lms_shared::models::Certificate;
 use crate::http::handlers::AppState;
 use axum::{
     body::Body,

@@ -27,4 +27,4 @@ pub use tenant::{TenantRepository, TenantRepositoryError};
 pub use user::{UserRepository, UserRepositoryError};
 pub use question::{QuestionRepository, QuestionRepositoryError};
 pub use attempt::{AttemptRepository, AttemptRepositoryError, ScoredAnswer};
-pub use certificate::{Certificate, CertificateRepository};
+pub use certificate::CertificateRepository;

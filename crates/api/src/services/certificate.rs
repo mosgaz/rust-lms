@@ -5,14 +5,15 @@
 //! генерации PDF-документов и отправки уведомлений по электронной почте.
 
 use crate::database::{
-    Certificate, CertificateRepository, CourseRepository, IdentityRepository, RlsContext,
-    UserRepository,
+    CertificateRepository, CourseRepository, IdentityRepository, RlsContext, UserRepository,
 };
 use crate::services::email::EmailService;
 use anyhow::{Context, Result};
+// ✅ Certificate теперь живёт в shared
+use rust_lms_shared::models::Certificate;
+use rust_lms_shared::{CourseId, UserId};
 use printpdf::*;
 use qrcode::QrCode;
-use rust_lms_shared::{CourseId, UserId};
 use sqlx::PgPool;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -54,29 +55,35 @@ impl CertificateService {
         let uid = UserId(user_id);
         let cid = CourseId(course_id);
 
-        // 1. Создаём запись сертификата в БД
-        let cert = self.repo.create(ctx, user_id, "course", course_id).await?;
-
-        // 2. Получаем User для доступа к identity_id
+        // 1. Получаем User для доступа к identity_id
+        //    (порядок изменён: сначала user, потом cert — чтобы знать course_title при создании)
         let user = self
             .user_repo
             .find_by_id(tenant_id, uid)
             .await
             .context("Не удалось найти пользователя для сертификата")?;
 
-        // 3. Получаем Identity для доступа к email
+        // 2. Получаем Identity для доступа к email
         let identity = self
             .identity_repo
             .find_by_id(user.identity_id)
             .await
             .context("Не удалось найти identity для сертификата")?;
 
-        // 4. Получаем Course для доступа к title
+        // 3. Получаем Course для доступа к title
         let course = self
             .course_repo
             .find_by_id(tenant_id, cid)
             .await
             .context("Не удалось найти курс для сертификата")?;
+
+        // 4. Создаём запись сертификата в БД
+        //    ⚠️ Передаём `course.title` — денормализуем название курса в сертификат,
+        //    чтобы UI мог отображать его без дополнительных запросов.
+        let cert = self
+			.repo
+			.create(ctx, user_id, "course", course_id)
+			.await?;
 
         let user_name = identity.email.as_str();
 
@@ -224,14 +231,14 @@ impl CertificateService {
         self.repo.list_by_user(ctx, user_id).await
     }
 
-	/// Получает сертификат с данными пользователя и курса для генерации PDF.
+    /// Получает сертификат с данными пользователя и курса для генерации PDF.
     ///
     /// # Arguments
     /// * `ctx` - Контекст тенанта.
     /// * `certificate_id` - Идентификатор сертификата.
     ///
     /// # Returns
-    /// Кортеж (сертификат, имя пользователя, название курса) или ошибку.
+    /// Кортеж (сертификат, email пользователя, название курса) или ошибку.
     pub async fn get_certificate_with_details(
         &self,
         ctx: &RlsContext,
@@ -267,5 +274,4 @@ impl CertificateService {
 
         Ok((cert, identity.email.clone(), course.title))
     }
-	
 }

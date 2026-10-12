@@ -28,18 +28,16 @@ use crate::student::StudentPanelLayout;
 
 // Admin
 use crate::admin::pages::dashboard::AdminDashboard;
+use crate::admin::pages::profile::AdminProfile;
 
 // Student
 use crate::student::pages::dashboard::StudentDashboard;
-
-use crate::admin::pages::profile::AdminProfile;
-use crate::student::pages::profile::StudentProfile;
-
 use crate::student::pages::courses::CoursesPage;
 use crate::student::pages::player::PlayerPage;
+use crate::student::pages::profile::ProfilePage;
 
 // TODO:
-use crate::ui::hooks::use_scroll_lock;
+// use crate::ui::hooks::use_scroll_lock;
 
 #[cfg(target_arch = "wasm32")]
 fn is_online_global() -> bool {
@@ -69,7 +67,7 @@ pub fn App() -> impl IntoView {
 
 	// Register window.ScrollLock (Rust replacement for lock_scroll.js)
     #[cfg(target_arch = "wasm32")]
-    use_scroll_lock::init();
+   	crate::ui::hooks::use_scroll_lock::init();
 
     // 3. Асинхронное восстановление очередей из IndexedDB при старте
     #[cfg(target_arch = "wasm32")]
@@ -178,7 +176,7 @@ pub fn App() -> impl IntoView {
 
 				<ParentRoute path=path!("/student") view=StudentPanelLayout>
 					<Route path=path!("") view=StudentDashboard />
-					<Route path=path!("profile") view=StudentProfile />
+					<Route path=path!("profile") view=ProfilePage />
 					
 					// <Route path=path!("my-courses") view=StudentMyCourses />
 					// <Route path=path!("courses") view=CoursesPage />

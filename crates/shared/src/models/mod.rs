@@ -5,6 +5,8 @@
 pub mod batch;
 /// Зачисления в потоки (Batch Enrollments).
 pub mod batch_enrollment;
+/// Сертификаты о завершении курса.
+pub mod certificate;
 /// Критерии завершения курса.
 pub mod completion;
 /// Модель курса.
@@ -32,6 +34,7 @@ pub mod answer;
 
 pub use batch::{Batch, BatchId, BatchStatus};
 pub use batch_enrollment::{BatchEnrollment, BatchEnrollmentId, BatchRole, EnrollmentStatus};
+pub use certificate::{Certificate, CertificateId};
 pub use completion::{CompletionCriteria, CompletionCriteriaError, CompletionMode, CompletionRule};
 pub use course::{Course, CourseId};
 pub use course_enrollment::{CourseEnrollment, CourseEnrollmentId};
