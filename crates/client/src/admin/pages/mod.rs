@@ -10,6 +10,7 @@ pub mod features;
 pub mod lesson_edit;
 pub mod lessons;
 pub mod licenses;
+pub mod localization;
 pub mod media;
 pub mod profile;
 pub mod question_edit;
