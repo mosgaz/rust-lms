@@ -1,4 +1,5 @@
 pub mod assessments;
+pub mod batches;
 pub mod courses;
 pub mod dashboard;
 pub mod profile;

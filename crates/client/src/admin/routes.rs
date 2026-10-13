@@ -5,6 +5,7 @@ use strum::{AsRefStr, Display, EnumIter, EnumString, IntoStaticStr};
 #[strum(serialize_all = "kebab-case")]
 pub enum AdminRoutes {
     Dashboard,
+    Batches,
     Courses,
     Tests,
     Users,
@@ -24,6 +25,7 @@ impl AdminRoutes {
     pub fn to_title(self) -> &'static str {
         match self {
             Self::Dashboard => "Дашборд",
+            Self::Batches => "Потоки",
             Self::Courses => "Курсы",
             Self::Tests => "Тесты",
             Self::Users => "Пользователи",

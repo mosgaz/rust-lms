@@ -34,6 +34,7 @@ use crate::admin::pages::courses::AdminCourseList;
 use crate::admin::pages::lessons::CourseStructurePage; // TODO: Rename lessons
 use crate::admin::pages::users::AdminUserList;
 use crate::admin::pages::tenants::AdminTenantList;
+use crate::admin::pages::batches::AdminBatchList;
 
 // Student
 use crate::student::pages::dashboard::StudentDashboard;
@@ -178,6 +179,7 @@ pub fn App() -> impl IntoView {
 					<Route path=path!("courses/:course_id/assessments") view=AdminAssessmentList />
 					<Route path=path!("users") view=AdminUserList />
 					<Route path=path!("tenants") view=AdminTenantList />
+					<Route path=path!("batches") view=AdminBatchList />
 					// <Route path=path!("settings") view=AdminSettings />
 				</ParentRoute>
 
