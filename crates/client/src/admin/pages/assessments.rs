@@ -135,13 +135,14 @@ fn QuestionCard(index: usize, question: Question) -> impl IntoView {
         QuestionType::LongAnswer => ("bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300", "Длинный ответ"),
     };
 
-    // ✅ Клонируем данные, которые используются в view! более одного раза
-    // или внутри замыканий, чтобы избежать E0382 (use of moved value).
+    // ✅ Клонируем данные до view!
     let title = question.title.clone();
     let description = question.description.clone();
     let has_description = description.is_some();
     let description_text = description.unwrap_or_default();
     let points = question.points;
+    // ✅ ID вопроса для ссылки на /admin/questions/{id}/edit
+    let question_id = question.id.0;
 
     view! {
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 hover:shadow-md transition-shadow">
@@ -168,12 +169,17 @@ fn QuestionCard(index: usize, question: Question) -> impl IntoView {
                     </Show>
                 </div>
                 <div class="flex items-center gap-1">
-                    <button class="p-1.5 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                    // ✅ Ссылка на страницу редактирования вопроса
+                    <a
+                        href=format!("/admin/questions/{}/edit", question_id)
+                        class="p-1.5 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        title="Редактировать вопрос"
+                    >
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
                         </svg>
-                    </button>
-                    <button class="p-1.5 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors">
+                    </a>
+                    <button class="p-1.5 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors" title="Удалить вопрос">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                         </svg>
