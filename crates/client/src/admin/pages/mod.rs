@@ -4,5 +4,6 @@ pub mod courses;
 pub mod dashboard;
 pub mod profile;
 pub mod lessons;
+pub mod settings;
 pub mod tenants;
 pub mod users;
