@@ -1,5 +1,6 @@
 pub mod analytics;
 pub mod assessments;
+pub mod batch_details;
 pub mod batches;
 pub mod certificates;
 pub mod course_edit;

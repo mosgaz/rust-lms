@@ -40,6 +40,7 @@ use crate::admin::pages::question_edit::AdminQuestionEdit;
 use crate::admin::pages::users::AdminUserList;
 use crate::admin::pages::roles::AdminRoleList;
 use crate::admin::pages::tenants::AdminTenantList;
+use crate::admin::pages::batch_details::AdminBatchDetails; // TODO: Rename details
 use crate::admin::pages::batches::AdminBatchList;
 use crate::admin::pages::features::AdminFeatureList;
 use crate::admin::pages::licenses::AdminLicenseList;
@@ -194,6 +195,7 @@ pub fn App() -> impl IntoView {
 					<Route path=path!("users") view=AdminUserList />
 					<Route path=path!("roles") view=AdminRoleList />
 					<Route path=path!("tenants") view=AdminTenantList />
+					<Route path=path!("batches/:batch_id/details") view=AdminBatchDetails />
 					<Route path=path!("batches") view=AdminBatchList />
 					<Route path=path!("features") view=AdminFeatureList />
 					<Route path=path!("licenses") view=AdminLicenseList />
