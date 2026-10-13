@@ -6,6 +6,7 @@ use strum::{AsRefStr, Display, EnumIter, EnumString, IntoStaticStr};
 pub enum AdminRoutes {
     Analytics,
     Dashboard,
+    Features,
     Batches,
     Certificates,
     Courses,
@@ -28,6 +29,7 @@ impl AdminRoutes {
         match self {
             Self::Analytics => "Аналитика",
             Self::Dashboard => "Дашборд",
+            Self::Features => "Функционал",
             Self::Certificates => "Сертификаты",
             Self::Batches => "Потоки",
             Self::Courses => "Курсы",

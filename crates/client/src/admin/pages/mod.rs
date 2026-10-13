@@ -5,6 +5,7 @@ pub mod certificates;
 pub mod courses;
 pub mod course_edit;
 pub mod dashboard;
+pub mod features;
 pub mod profile;
 pub mod lessons;
 pub mod settings;
