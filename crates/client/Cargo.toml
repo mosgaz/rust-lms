@@ -65,6 +65,13 @@ web-sys = { workspace = true, features = [
     "MessageEvent",
     "Event",
     "EventTarget",
+    # --- Input фичи ---
+	"File", 
+	"FileList", 
+	"HtmlInputElement", 
+	"DataTransfer",
+    "DragEvent", 
+	"Clipboard",
     # --- IndexedDB фичи ---
     "IdbFactory",
     "IdbOpenDbRequest",
@@ -82,6 +89,7 @@ web-sys = { workspace = true, features = [
 ] }
 wasm-bindgen-futures = "0.4"
 gloo = { workspace = true, features = ["futures"] }
+gloo-timers = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 # Рекомендуется для красивых ошибок в консоли браузера
 console_error_panic_hook = "0.1"

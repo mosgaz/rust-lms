@@ -100,6 +100,7 @@ fn AdminSidenavContent() -> impl IntoView {
 												AdminRoutes::Batches | 
 												AdminRoutes::Certificates | 
 												AdminRoutes::Courses | 
+												AdminRoutes::Media | 
 												AdminRoutes::Tests))
                                             .map(|r| (r.to_route(), r.to_title()))
                                             .collect(),
