@@ -10,6 +10,7 @@ pub enum AdminRoutes {
     Users,
 	Profile,
     Settings,
+    Tenants,
 }
 
 impl AdminRoutes {
@@ -26,6 +27,7 @@ impl AdminRoutes {
             Self::Courses => "Курсы",
             Self::Tests => "Тесты",
             Self::Users => "Пользователи",
+            Self::Tenants => "Организации",
             Self::Profile => "Профиль",
             Self::Settings => "Настройки",
         }
