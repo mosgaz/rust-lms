@@ -10,6 +10,7 @@ pub mod lesson_edit;
 pub mod lessons;
 pub mod licenses;
 pub mod profile;
+pub mod question_edit;
 pub mod roles;
 pub mod settings;
 pub mod tenants;
