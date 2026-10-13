@@ -136,6 +136,11 @@ fn AdminSidenavContent() -> impl IntoView {
                         </SidenavLink>
                     </SidenavMenuItem>
                     <SidenavMenuItem>
+                        <SidenavLink href=AdminRoutes::Licenses.to_route()>
+                            <span>{AdminRoutes::Licenses.to_title()}</span>
+                        </SidenavLink>
+                    </SidenavMenuItem>
+                    <SidenavMenuItem>
                         <SidenavLink href=AdminRoutes::Settings.to_route()>
                             <span>{AdminRoutes::Settings.to_title()}</span>
                         </SidenavLink>

@@ -8,6 +8,7 @@ pub mod dashboard;
 pub mod features;
 pub mod profile;
 pub mod lessons;
+pub mod licenses;
 pub mod settings;
 pub mod tenants;
 pub mod users;

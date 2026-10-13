@@ -39,6 +39,7 @@ use crate::admin::pages::users::AdminUserList;
 use crate::admin::pages::tenants::AdminTenantList;
 use crate::admin::pages::batches::AdminBatchList;
 use crate::admin::pages::features::AdminFeatureList;
+use crate::admin::pages::licenses::AdminLicenseList;
 use crate::admin::pages::settings::AdminSettingList;
 
 // Student
@@ -189,6 +190,7 @@ pub fn App() -> impl IntoView {
 					<Route path=path!("tenants") view=AdminTenantList />
 					<Route path=path!("batches") view=AdminBatchList />
 					<Route path=path!("features") view=AdminFeatureList />
+					<Route path=path!("licenses") view=AdminLicenseList />
 					<Route path=path!("settings") view=AdminSettingList />
 				</ParentRoute>
 
