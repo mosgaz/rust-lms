@@ -6,6 +6,7 @@ pub mod course_edit;
 pub mod courses;
 pub mod dashboard;
 pub mod features;
+pub mod lesson_edit;
 pub mod lessons;
 pub mod licenses;
 pub mod profile;
