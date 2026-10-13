@@ -27,9 +27,11 @@ use crate::admin::AdminPanelLayout;
 use crate::student::StudentPanelLayout;
 
 // Admin
+use crate::admin::pages::analytics::AdminAnalyticList;
 use crate::admin::pages::assessments::AdminAssessmentList;
 use crate::admin::pages::dashboard::AdminDashboard;
 use crate::admin::pages::profile::AdminProfile;
+use crate::admin::pages::certificates::AdminCertificateList;
 use crate::admin::pages::courses::AdminCourseList;
 use crate::admin::pages::lessons::CourseStructurePage; // TODO: Rename lessons
 use crate::admin::pages::users::AdminUserList;
@@ -175,6 +177,8 @@ pub fn App() -> impl IntoView {
                 <ParentRoute path=path!("/admin") view=AdminPanelLayout>
 					<Route path=path!("") view=AdminDashboard />
 					<Route path=path!("profile") view=AdminProfile />
+					<Route path=path!("analytics") view=AdminAnalyticList />
+					<Route path=path!("certificates") view=AdminCertificateList />
 					<Route path=path!("courses") view=AdminCourseList />
 					<Route path=path!("courses/:course_id/structure") view=CourseStructurePage />
 					<Route path=path!("courses/:course_id/assessments") view=AdminAssessmentList />

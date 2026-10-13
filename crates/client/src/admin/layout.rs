@@ -95,7 +95,12 @@ fn AdminSidenavContent() -> impl IntoView {
                                 <SidenavMenuSub>
                                     {render_sub_links(
                                         AdminRoutes::iter()
-                                            .filter(|r| matches!(r, AdminRoutes::Batches | AdminRoutes::Courses | AdminRoutes::Tests))
+                                            .filter(|r| matches!(r, 
+												AdminRoutes::Analytics | 
+												AdminRoutes::Batches | 
+												AdminRoutes::Certificates | 
+												AdminRoutes::Courses | 
+												AdminRoutes::Tests))
                                             .map(|r| (r.to_route(), r.to_title()))
                                             .collect(),
                                     )}
