@@ -14,6 +14,7 @@ pub enum AdminRoutes {
     Users,
 	Licenses,
 	Profile,
+    Roles,
     Settings,
     Tenants,
 }
@@ -39,6 +40,7 @@ impl AdminRoutes {
             Self::Tenants => "Организации",
             Self::Profile => "Профиль",
             Self::Licenses => "Лицензии",
+            Self::Roles => "Роли",
             Self::Settings => "Настройки",
         }
     }
